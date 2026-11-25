@@ -180,6 +180,15 @@
         a.pause(); a.currentTime = 0; a.volume = prevVol;
       }
     }
+    // Warm up speech synthesis voices on user gesture
+    try {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.getVoices();
+        const u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0;
+        window.speechSynthesis.speak(u);
+      }
+    } catch {}
   }
 
   function playSfx(name, { loop = false, volume = 0.55 } = {}) {
@@ -204,12 +213,88 @@
 
   function stopAllSfx() {
     Object.keys(audioCache).forEach(stopSfx);
+    Voice.stop();
   }
 
   function updateMuteBtn() {
     dom.muteBtn.textContent = state.muted ? '🔇' : '🔊';
     dom.muteBtn.setAttribute('aria-label', state.muted ? 'Unmute sound' : 'Mute sound');
   }
+
+  // ============================
+  // VOICE (Browser SpeechSynthesis)
+  // ============================
+  // Uses the device/browser Web Speech API for spoken dialogue and narration.
+  // Quality/available voices vary by device. For higher-quality pre-rendered
+  // audio, replace with generated clips and map them in AUDIO_MAP or a VOICE_MAP.
+  const Voice = (() => {
+    const synth = window.speechSynthesis;
+    let voices = [];
+    let enabled = true;
+    let currentUtterance = null;
+
+    function loadVoices() {
+      if (!synth) return;
+      voices = synth.getVoices() || [];
+    }
+    if (synth) {
+      loadVoices();
+      synth.onvoiceschanged = loadVoices;
+    }
+
+    function pickVoice(preferredLangs = ['en-NG','en-GB','en-US','en']) {
+      if (!voices.length) loadVoices();
+      for (const lang of preferredLangs) {
+        const v = voices.find(x => (x.lang || '').toLowerCase().startsWith(lang.toLowerCase()));
+        if (v) return v;
+      }
+      return voices[0] || null;
+    }
+
+    function profileFor(line) {
+      const speaker = (line.speaker || '').toLowerCase();
+      const type = line.type;
+      if (type === 'narration') return { rate: 0.98, pitch: 0.92, volume: 0.95, langs: ['en-NG','en-GB','en-US','en'] };
+      if (speaker.includes('mrs. okonkwo') || speaker.includes('mrs okonkwo')) return { rate: 0.95, pitch: 1.05, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+      if (speaker.includes('chika')) return { rate: 1.02, pitch: 1.15, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+      if (speaker.includes('guard')) return { rate: 0.95, pitch: 0.8, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+      if (speaker.includes('baby')) return { rate: 1.05, pitch: 1.35, volume: 0.95, langs: ['en-NG','en-GB','en-US','en'] };
+      if (speaker.includes('neighbour')) return { rate: 0.98, pitch: 0.9, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+      if (speaker.includes('man at gate')) return { rate: 1.0, pitch: 0.85, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+      if (speaker.includes('voice on phone') || speaker.includes('phone')) return { rate: 0.97, pitch: 0.95, volume: 0.95, langs: ['en-NG','en-GB','en-US','en'] };
+      if (speaker === 'you') return { rate: 1.0, pitch: 1.0, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+      return { rate: 1.0, pitch: 1.0, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+    }
+
+    function stop() {
+      if (!synth) return;
+      try { synth.cancel(); } catch {}
+      currentUtterance = null;
+    }
+
+    function speak(lineOrText, opts = {}) {
+      if (!synth || !enabled || state.muted) return;
+      const text = typeof lineOrText === 'string' ? lineOrText : (lineOrText.text || '');
+      if (!text.trim()) return;
+      stop();
+      const profile = typeof lineOrText === 'object' ? profileFor(lineOrText) : { rate: 1, pitch: 1, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+      const u = new SpeechSynthesisUtterance(text);
+      const voice = pickVoice(profile.langs);
+      if (voice) u.voice = voice;
+      u.rate = opts.rate ?? profile.rate;
+      u.pitch = opts.pitch ?? profile.pitch;
+      u.volume = opts.volume ?? profile.volume;
+      currentUtterance = u;
+      u.onend = () => { if (currentUtterance === u) currentUtterance = null; };
+      u.onerror = () => { if (currentUtterance === u) currentUtterance = null; };
+      try { synth.speak(u); } catch {}
+    }
+
+    function setEnabled(v) { enabled = !!v; if (!enabled) stop(); }
+    function isEnabled() { return enabled; }
+
+    return { speak, stop, setEnabled, isEnabled, supported: !!synth };
+  })();
 
   // ============================
   // IMAGE PRELOADING
@@ -356,6 +441,7 @@
   // ============================
   async function goToScene(sceneId) {
     if (!sceneId) return;
+    Voice.stop();
     currentSceneId = sceneId;
     state.sceneId = sceneId;
     currentScene = level.scenes[sceneId];
@@ -452,6 +538,9 @@
     dom.bubble.classList.toggle('hidden', isNarration);
     dom.speakerTag.classList.toggle('hidden', isNarration || !line.speaker);
 
+    // Voice starts with the line
+    Voice.speak(line);
+
     if (isNarration) {
       dom.narrationText.textContent = '';
       await typeText(dom.narrationText, line.text || '');
@@ -471,6 +560,7 @@
     }
 
     await waitForTap();
+    Voice.stop();
   }
 
   // ============================
@@ -534,6 +624,7 @@
     decisionRemaining = decisionTotal;
     dom.decisionPrompt.textContent = sc.prompt || 'What do you do?';
     dom.choices.innerHTML = '';
+    Voice.speak({ type: 'narration', text: sc.prompt || 'What do you do?' });
 
     // Shuffle choices
     const shuffled = sc.choices.map((c, i) => ({ ...c, _orig: i }));
@@ -609,6 +700,7 @@
     clearInterval(decisionTimer);
     decisionTimer = null;
     stopSfx('heartbeat');
+    Voice.stop();
     setDangerPulse(false);
     lockChoices();
 
@@ -635,6 +727,7 @@
     if (decisionResolved) return;
     decisionResolved = true;
     stopSfx('heartbeat');
+    Voice.stop();
     setDangerPulse(false);
     lockChoices();
     recordDecision(sc, false, 0, 'timeout');
@@ -920,6 +1013,10 @@
       goToScene(level.startScene);
     }
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { Voice.stop(); stopAllSfx(); }
+  });
 
   // Boot
   if (document.readyState === 'loading') {

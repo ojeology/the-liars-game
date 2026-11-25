@@ -92,6 +92,7 @@ The "Watch ad to continue from here" button is on the Game Over screen (`index.h
 
 ## Game Notes
 
+- **Voice:** browser Web Speech API (`speechSynthesis`) speaks narration/dialogue. Quality varies by device/browser. Mute button silences both SFX and voice. For higher-quality pre-rendered voice clips, replace with generated audio and wire into `game.js`.
 - **Save/progress:** stored in `localStorage` (`liars_game_save_v1`). Settings (mute) stored separately.
 - **Checkpoint retry:** on failure, "Retry from last checkpoint" resumes from the last safe setup before the failed decision.
 - **Truth Score:** based on correct answers and speed across 7 decisions (70 base + up to 30 speed per correct decision, normalized to 0-100).
