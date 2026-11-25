@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b1020">
+  <meta name="description" content="The Liar's Game - Level 1: The Night Nanny. A cinematic visual novel set in Lagos.">
+  <title>The Liar's Game — The Night Nanny</title>
+  <link rel="preload" href="style.css" as="style">
+  <link rel="preload" href="story.js" as="script">
+  <link rel="preload" href="game.js" as="script">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <!-- Background image layers for crossfade -->
+    <div id="bgA" class="bg-layer active"></div>
+    <div id="bgB" class="bg-layer"></div>
+    <div id="vignette" class="vignette"></div>
+    <div id="fx-red" class="fx-red" aria-hidden="true"></div>
+    <div id="fx-shake" class="fx-shake-wrap">
+
+      <!-- Top HUD -->
+      <header class="hud" id="hud">
+        <div class="hud-left">
+          <div id="chapter-label" class="chapter-label"></div>
+        </div>
+        <div class="hud-right">
+          <button id="mute-btn" class="icon-btn" aria-label="Toggle sound" title="Mute/Unmute">🔊</button>
+        </div>
+      </header>
+
+      <!-- Title screen -->
+      <section id="screen-title" class="screen screen-title hidden">
+        <div class="title-card">
+          <p class="eyebrow">A CINEMATIC GAME</p>
+          <h1 id="title-heading" class="title-heading">THE LIAR'S GAME</h1>
+          <p id="title-sub" class="title-sub">Level 1: The Night Nanny</p>
+          <div class="title-rule"></div>
+          <p id="title-prompt" class="title-prompt pulse">Tap to begin</p>
+          <p class="title-meta">🎧 Headphones recommended</p>
+        </div>
+      </section>
+
+      <!-- Dialogue / narration stage -->
+      <section id="screen-story" class="screen screen-story hidden" aria-live="polite">
+        <div id="speaker-tag" class="speaker-tag hidden"></div>
+        <div id="dialogue-wrap" class="dialogue-wrap">
+          <div id="narration-box" class="narration-box hidden">
+            <p id="narration-text"></p>
+          </div>
+          <div id="bubble" class="bubble hidden">
+            <p id="bubble-text"></p>
+          </div>
+          <div id="tap-hint" class="tap-hint">Tap to continue ▸</div>
+        </div>
+      </section>
+
+      <!-- Rules card -->
+      <section id="screen-rules" class="screen screen-rules hidden">
+        <div class="rules-card">
+          <p class="eyebrow danger">MEMORIZE THESE</p>
+          <h2 id="rules-heading" class="rules-heading">THE RULES</h2>
+          <ol id="rules-list" class="rules-list"></ol>
+          <div class="rules-timer-wrap">
+            <div class="rules-timer-bar"><div id="rules-timer-fill" class="rules-timer-fill"></div></div>
+            <p id="rules-timer-text" class="rules-timer-text">8</p>
+          </div>
+          <p class="rules-warning">They will not be shown again.</p>
+        </div>
+      </section>
+
+      <!-- Decision screen -->
+      <section id="screen-decision" class="screen screen-decision hidden">
+        <div class="decision-top">
+          <div class="timer-ring-wrap">
+            <svg class="timer-ring" viewBox="0 0 120 120">
+              <circle class="timer-ring-bg" cx="60" cy="60" r="52"/>
+              <circle id="timer-ring-fg" class="timer-ring-fg" cx="60" cy="60" r="52"/>
+            </svg>
+            <div id="timer-text" class="timer-text">5</div>
+          </div>
+          <p id="decision-prompt" class="decision-prompt"></p>
+        </div>
+        <div id="choices" class="choices"></div>
+      </section>
+
+      <!-- Game over screen -->
+      <section id="screen-gameover" class="screen screen-gameover hidden">
+        <div class="gameover-card">
+          <p class="eyebrow danger">GAME OVER</p>
+          <h2 class="gameover-title">You lost the Liar's Game.</h2>
+          <p class="gameover-sub">You're not good enough to be a liar.</p>
+          <div class="score-block">
+            <div class="score-ring">
+              <svg viewBox="0 0 120 120">
+                <circle class="timer-ring-bg" cx="60" cy="60" r="52"/>
+                <circle id="score-ring-fg" class="score-ring-fg" cx="60" cy="60" r="52"/>
+              </svg>
+              <div class="score-inner">
+                <span id="score-value" class="score-value">0</span>
+                <span class="score-label">TRUTH SCORE</span>
+              </div>
+            </div>
+            <p id="score-detail" class="score-detail"></p>
+          </div>
+          <div class="gameover-actions">
+            <button id="btn-retry" class="btn btn-primary">Retry from checkpoint</button>
+            <button id="btn-ad" class="btn btn-secondary">📺 Watch ad to continue</button>
+            <button id="btn-share" class="btn btn-ghost">Share my score</button>
+          </div>
+          <p id="ad-note" class="ad-note hidden"></p>
+        </div>
+      </section>
+
+      <!-- Win screen -->
+      <section id="screen-win" class="screen screen-win hidden">
+        <div class="win-card">
+          <p class="eyebrow win">YOU SURVIVED</p>
+          <h2 class="win-title">The Night Nanny</h2>
+          <p class="win-sub">You played the Liar's Game. And you won.</p>
+          <div class="score-block">
+            <div class="score-ring">
+              <svg viewBox="0 0 120 120">
+                <circle class="timer-ring-bg" cx="60" cy="60" r="52"/>
+                <circle id="win-score-ring-fg" class="score-ring-fg win-ring" cx="60" cy="60" r="52"/>
+              </svg>
+              <div class="score-inner">
+                <span id="win-score-value" class="score-value">0</span>
+                <span class="score-label">TRUTH SCORE</span>
+              </div>
+            </div>
+            <p id="win-score-detail" class="score-detail"></p>
+          </div>
+          <div class="gameover-actions">
+            <button id="btn-win-share" class="btn btn-primary">Share my score</button>
+            <button id="btn-win-replay" class="btn btn-ghost">Play again</button>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- fx-shake-wrap -->
+  </div>
+
+  <script src="story.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
