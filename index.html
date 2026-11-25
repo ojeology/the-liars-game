@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#0b1020">
-  <meta name="description" content="The Liar's Game - Level 1: The Night Nanny. A cinematic visual novel set in Lagos.">
-  <title>The Liar's Game — The Night Nanny</title>
+  <meta name="description" content="The Liar's Game: Episode 1 — Room 412. A cinematic psychological deception game set in Lagos.">
+  <title>The Liar's Game — Room 412</title>
   <link rel="preload" href="style.css" as="style">
   <link rel="preload" href="story.js" as="script">
   <link rel="preload" href="game.js" as="script">
@@ -26,6 +26,7 @@
           <div id="chapter-label" class="chapter-label"></div>
         </div>
         <div class="hud-right">
+          <button id="skip-btn" class="icon-btn skip-btn hidden" aria-label="Skip dialogue" title="Skip">⏭</button>
           <button id="mute-btn" class="icon-btn" aria-label="Toggle sound" title="Mute/Unmute">🔊</button>
         </div>
       </header>
@@ -70,6 +71,25 @@
         </div>
       </section>
 
+
+      <!-- Inspection screen (Act 1 clues) -->
+      <section id="screen-inspect" class="screen screen-inspect hidden">
+        <div class="inspect-card">
+          <p class="eyebrow">INSPECT THE ROOM</p>
+          <h2 id="inspect-title" class="inspect-title">Find your alibi</h2>
+          <p class="inspect-sub">Tap each clue to examine it. You need every advantage before the door opens.</p>
+          <div id="inspect-grid" class="inspect-grid"></div>
+          <button id="inspect-continue" class="btn btn-primary inspect-continue" disabled>Continue</button>
+        </div>
+        <div id="inspect-overlay" class="inspect-overlay hidden" role="dialog" aria-modal="true">
+          <div class="inspect-overlay-card">
+            <img id="inspect-overlay-img" class="inspect-overlay-img" alt="Clue" />
+            <h3 id="inspect-overlay-title" class="inspect-overlay-title"></h3>
+            <p id="inspect-overlay-desc" class="inspect-overlay-desc"></p>
+            <button id="inspect-overlay-close" class="btn btn-primary">Close</button>
+          </div>
+        </div>
+      </section>
       <!-- Decision screen -->
       <section id="screen-decision" class="screen screen-decision hidden">
         <div class="decision-top">
@@ -89,8 +109,8 @@
       <section id="screen-gameover" class="screen screen-gameover hidden">
         <div class="gameover-card">
           <p class="eyebrow danger">GAME OVER</p>
-          <h2 class="gameover-title">You lost the Liar's Game.</h2>
-          <p class="gameover-sub">You're not good enough to be a liar.</p>
+          <h2 id="gameover-title" class="gameover-title">YOU GOT CAUGHT.</h2>
+          <p id="gameover-sub" class="gameover-sub">You're not good enough to be a liar.</p>
           <div class="score-block">
             <div class="score-ring">
               <svg viewBox="0 0 120 120">
@@ -105,8 +125,8 @@
             <p id="score-detail" class="score-detail"></p>
           </div>
           <div class="gameover-actions">
-            <button id="btn-retry" class="btn btn-primary">Retry from checkpoint</button>
-            <button id="btn-ad" class="btn btn-secondary">📺 Watch ad to continue</button>
+            <button id="btn-retry" class="btn btn-primary">Retry from last checkpoint</button>
+            <button id="btn-ad" class="btn btn-secondary">📺 Watch Ad to Continue</button>
             <button id="btn-share" class="btn btn-ghost">Share my score</button>
           </div>
           <p id="ad-note" class="ad-note hidden"></p>
@@ -117,8 +137,8 @@
       <section id="screen-win" class="screen screen-win hidden">
         <div class="win-card">
           <p class="eyebrow win">YOU SURVIVED</p>
-          <h2 class="win-title">The Night Nanny</h2>
-          <p class="win-sub">You played the Liar's Game. And you won.</p>
+          <h2 class="win-title">Room 412</h2>
+          <p class="win-sub">You lied beautifully. Amara bought it... for now.</p>
           <div class="score-block">
             <div class="score-ring">
               <svg viewBox="0 0 120 120">

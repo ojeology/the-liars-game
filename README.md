@@ -1,103 +1,114 @@
-# The Liar's Game — Level 1: The Night Nanny
+# The Liar's Game — Episode 1: ROOM 412
 
-A cinematic, mobile-first visual novel web game set in Lagos. Static site (HTML/CSS/JS), no framework, no build step, no backend.
+A cinematic, mobile-first psychological deception game set in Victoria Island, Lagos. Static site (HTML/CSS/JS), no framework, no build step, no backend.
 
-## Play / Deploy
+## Live / Deploy
+
+- **Repo:** https://github.com/ojeology/the-liars-game
+- **GitHub Pages:** deploy from `main` branch, `/ (root)` (already configured).
+- **Live URL:** https://ojeology.github.io/the-liars-game/
 
 ### Run locally
 ```bash
-# from the repo root
+cd liars-game
 python3 -m http.server 8080
 # open http://localhost:8080
 ```
-
-### Deploy to GitHub Pages
-1. Push this repo to GitHub.
-2. In **Settings → Pages**, set **Source** to "Deploy from a branch".
-3. Select branch: `main`, folder: `/ (root)`.
-4. Save. GitHub Pages will publish at `https://<username>.github.io/<repo>/`.
-
-The game is fully static and works from the repo root. A `.nojekyll` file is included.
 
 ## Project Structure
 
 ```
 .
-├── index.html          # Game shell / screens
-├── style.css           # Cinematic mobile-first styling, Ken Burns, FX
-├── game.js             # Game engine (data-driven scene runner)
-├── story.js            # ALL story content & scene data (Level 1)
+├── index.html            # Game shell/screens
+├── style.css             # Cinematic mobile-first styles, Ken Burns, FX
+├── game.js               # Data-driven engine (scene runner, audio, voice, save)
+├── story.js              # ALL episode content (EPISODES.room412)
 ├── assets/
-│   ├── images/         # WebP scene images (max 1080px wide, <150KB target)
-│   └── audio/          # SFX placeholders (.wav)
-├── IMAGE_PROMPTS.md    # Prompt for every image filename (regenerate/replace)
+│   ├── images/           # WebP scene images (max ~1080px wide, <150KB target)
+│   └── audio/            # SFX placeholders (.wav)
+├── tests/
+│   └── test_logic.mjs     # Automated logic/graph tests (node)
+├── IMAGE_PROMPTS.md      # Character sheet + every required image prompt/filename
+├── VOICE_SCRIPT.md       # Every spoken line, speaker, filename, delivery direction
 ├── README.md
 └── .nojekyll
 ```
 
-## How to Add Level 2 (or any new level)
+## How the Game Engine Works
 
-The engine is data-driven. **Adding a level should only require new data, not new engine code.**
+- `game.js` is a data-driven scene runner. It reads `EPISODES.room412` from `story.js`.
+- Supported scene types: `title`, `dialogue`, `inspection`, `rules_card`, `decision`, `failure_sequence`, `ending`, `game_over`, `win`.
+- **Dialogue:** typewriter text, tap to advance, skip button, speech bubbles with speaker tags/tails, narration caption box, per-line SFX, browser TTS voice.
+- **Inspection:** Act 1 clue hub; player must inspect all clues before continuing. Inspected clues are tracked in state.
+- **Decisions:** 3 choices, shuffled visual order, 8-second countdown, low-time tension (last 3s: red pulse, shake, heartbeat), timeout = contextual failure. Correctness is attached to choice objects, not visual order.
+- **Failure system:** wrong/timeout does not instantly end; engine routes to `failure_sequence` with `failTagScenes` (including `timeout`), plays 2-4 scenes, then `game_over`.
+- **Win:** only the full correct 6-choice sequence reaches the ending/win screen.
 
-1. **Add story data** in `story.js`:
-   - Create a new level object under `LEVELS`, e.g. `LEVELS.level2 = { id: 'level2', title: '...', subtitle: '...', startScene: '...', scenes: { ... } }`.
-   - Follow the existing scene schema:
-     - `title`, `dialogue`, `narration`, `rules_card`, `decision`, `failure_sequence`, `ending`, `game_over`, `win`.
-   - Dialogue lines use `{ type: 'speech'|'narration', speaker, side, text, image, pov?, sfx? }`.
-   - Decisions use `{ type:'decision', id, prompt, image, timerSeconds, choices:[{text, correct, failTag}], nextCorrect, nextWrong }`.
-   - Failure sequences include `failTagScenes` with a variant for each failTag and `timeout`, each with 2-3 short scenes.
+## How to Add Episode 2
 
-2. **Add images** to `assets/images/` (WebP, max 1080px wide, ideally <150KB). List prompts in `IMAGE_PROMPTS.md`.
+1. In `story.js`, add `EPISODES.room413 = { id, title, subtitle, startScene, scenes: {...} }` following the same schema.
+2. Add new images to `assets/images/` and prompts to `IMAGE_PROMPTS.md`.
+3. Add/extend voice lines in `VOICE_SCRIPT.md`.
+4. Update `GAME_ID` in `game.js` (or add a level-select screen) to load the new episode.
+5. Keep scene IDs stable and ensure every decision has exactly 1 correct choice and contextual failure branches (including timeout).
+6. Run `node tests/test_logic.mjs` (adapt test to target episode) and verify exactly one winning path.
 
-3. **Add audio** (optional) to `assets/audio/` and map names in `game.js` `AUDIO_MAP`.
+## How to Add Scenes and Decisions
 
-4. **Wire level selection** (when ready): update `game.js` to pick which level to load (currently hardcoded to `LEVEL_ID = 'level1'`). A simple level-select screen can set `LEVEL_ID`/load the level object.
+- **Scene:** add an object under `EPISODES.<id>.scenes` with a unique key. Reference it via `next`, `nextCorrect`, or `nextWrong`.
+- **Decision:** `type: "decision"`, `id`, `prompt`, `image`, `timerSeconds`, `choices: [{text, correct, failTag}]`, `nextCorrect`, `nextWrong`.
+- **Failure sequence:** `type: "failure_sequence"`, `failTagScenes: { <failTag>: [line,...], timeout: [line,...] }`, `next: "game_over"`. Each branch should have 2-4 scenes and end with the narrative reveal/caught moment.
+- Validate all refs: `node tests/test_logic.mjs`.
 
-5. **Test** the full path: intro, all decisions (correct/incorrect/timeout), failure flow, and win.
+## How to Replace Images
 
-## Where to Replace Placeholder Audio and Images
+- Replace files in `assets/images/` (keep filenames or update story refs).
+- Use WebP, portrait 9:16, max ~1080px wide, target <150KB.
+- Follow prompts in `IMAGE_PROMPTS.md`. Do not bake text into images.
+- Current build uses development placeholders; replace with final art for production polish.
 
-### Images
-- Files live in `assets/images/*.webp`.
-- See `IMAGE_PROMPTS.md` for every filename, its scene purpose, and the exact generation prompt.
-- Images marked **Placeholder** in that file are the ones to replace first.
-- Keep format WebP, max 1080px wide, ideally under 150 KB. Use the same cinematic style and character consistency notes.
+## How to Replace Character Voices
 
-### Audio
-- Files live in `assets/audio/`:
-  - `knock.wav` — door knock
-  - `ring.wav` — phone ring
-  - `baby_cry.wav` — baby cry
-  - `heartbeat.wav` — heartbeat (timer low / tension)
-  - `lights_out.wav` — lights-out thud
-  - `call_end.wav` — call end beep
-  - `car_drive.wav` — car leaving
-- Replace with short royalty-free production SFX (keep names, or update `AUDIO_MAP` in `game.js`).
-- In `story.js`, scenes/lines reference SFX by name via `sfx: "door_knock"` etc.
-- In `game.js`, see `AUDIO_MAP` and the `// FINAL AUDIO:` comment.
+- Browser TTS is used by default (`speechSynthesis`) with character profiles in `game.js` (`Voice.profileFor`).
+- For pre-generated voices, create audio files per `VOICE_SCRIPT.md` naming and extend the engine to play clip files by line/filename (map in a `VOICE_MAP` similar to `AUDIO_MAP`).
+- Keep voice style consistent: Tunde warm/nervous, Amara controlled/restrained, Kemi lively, Mr. Bassey hesitant, Security stern.
 
-## Where to Connect a Real Ad SDK Later
+## How to Replace Sound Effects
 
-- **File:** `game.js`
-- **Function:** `watchAdToContinue()`
-- Look for the comment block: `AD SDK INTEGRATION POINT`.
-- Current behavior: stub that shows a placeholder message, waits 1.5s, then calls `resumeFromCheckpoint()`.
-- To integrate a rewarded ad:
-  1. Include your ad SDK script (or load it dynamically).
-  2. Replace the stub body with your SDK's rewarded-ad call.
-  3. On reward/ad completion, call `resumeFromCheckpoint()`.
-  4. On ad failure/cancel, re-enable the button and show an appropriate message.
+- Replace files in `assets/audio/` or update `AUDIO_MAP` in `game.js`.
+- Current SFX: `knock.wav` (door knock), `door_handle.wav`, `phone_buzz.wav`, `keycard_beep.wav`, `heartbeat.wav`, plus legacy placeholders.
 
-The "Watch ad to continue from here" button is on the Game Over screen (`index.html`, `#btn-ad`).
+## How Checkpoints Work
 
-## Game Notes
+- Progress saved in `localStorage` key `liars_game_room412_v1`.
+- State stores: current scene, checkpoint scene, decisions, inspected clues, failed decision, completion.
+- On correct decision, checkpoint advances to the next setup scene.
+- On failure, **Retry from last checkpoint** clears failed decision state and resumes at checkpoint.
+- Refreshing preserves valid progress.
 
-- **Voice:** browser Web Speech API (`speechSynthesis`) speaks narration/dialogue. Quality varies by device/browser. Mute button silences both SFX and voice. For higher-quality pre-rendered voice clips, replace with generated audio and wire into `game.js`.
-- **Save/progress:** stored in `localStorage` (`liars_game_save_v1`). Settings (mute) stored separately.
-- **Checkpoint retry:** on failure, "Retry from last checkpoint" resumes from the last safe setup before the failed decision.
-- **Truth Score:** based on correct answers and speed across 7 decisions (70 base + up to 30 speed per correct decision, normalized to 0-100).
-- **Timer:** each decision has 5 seconds. Timeout counts as failure. Buttons shuffle each time.
-- **Rules card:** shown once for 8 seconds with countdown; never shown again.
+## Where a Future Rewarded-Ad SDK Would Connect
 
-## Content / Tone
-Playful, tense, a little funny, Lagos setting. "What if this happened to me?"
+- `game.js`, function `watchAdToContinue()`.
+- Look for `AD SDK INTEGRATION POINT` comment.
+- Current behavior: placeholder delay, then `resumeFromCheckpoint()`. Replace with rewarded ad SDK callback; on reward call `resumeFromCheckpoint()`.
+
+## Testing
+
+Run logic/graph tests:
+```bash
+node tests/test_logic.mjs
+```
+
+The test validates: scene refs, 6 decisions, 3 choices each, exactly 1 correct, timeout/failTag branches, 2-4 failure scenes, all 12 wrong choices lead to game over, all 6 timeouts lead to game over, and exactly one winning path across all choice combinations (including timeout combinations).
+
+## GitHub Pages Deployment
+
+- Static files at repo root. `.nojekyll` included.
+- GitHub Pages configured: **Deploy from branch**, `main`, `/ (root)`.
+- After pushing to `main`, Pages rebuilds automatically. Verify the live URL loads Episode 1.
+
+## Notes / Limitations
+
+- Images are development placeholders (WebP). Replace using `IMAGE_PROMPTS.md` for final cinematic art.
+- Voices use browser/device TTS; quality varies by device. `VOICE_SCRIPT.md` is provided for pre-generated voice production.
+- No real ads, accounts, payments, analytics, or backend services.

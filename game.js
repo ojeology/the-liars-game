@@ -63,6 +63,18 @@
     btnWinShare: $('btn-win-share'),
     btnWinReplay: $('btn-win-replay'),
     adNote: $('ad-note'),
+    gameoverTitle: $('gameover-title'),
+    gameoverSub: $('gameover-sub'),
+    screenInspect: $('screen-inspect'),
+    inspectTitle: $('inspect-title'),
+    inspectGrid: $('inspect-grid'),
+    inspectContinue: $('inspect-continue'),
+    inspectOverlay: $('inspect-overlay'),
+    inspectOverlayImg: $('inspect-overlay-img'),
+    inspectOverlayTitle: $('inspect-overlay-title'),
+    inspectOverlayDesc: $('inspect-overlay-desc'),
+    inspectOverlayClose: $('inspect-overlay-close'),
+    skipBtn: $('skip-btn'),
   };
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 52; // r=52
@@ -70,7 +82,7 @@
   // ============================
   // STATE
   // ============================
-  const level = LEVELS[LEVEL_ID];
+  const episode = (typeof EPISODES !== 'undefined' && EPISODES[GAME_ID]) ? EPISODES[GAME_ID] : (typeof LEVELS !== 'undefined' ? LEVELS.level1 : null);
   let state = freshState();
   let currentSceneId = null;
   let currentScene = null;
@@ -80,6 +92,7 @@
   let fullText = '';
   let waitingTap = false;
   let tapResolver = null;
+  let skipSceneRequested = false;
   let decisionTimer = null;
   let decisionRemaining = 0;
   let decisionTotal = 5;
@@ -92,12 +105,14 @@
 
   function freshState() {
     return {
-      levelId: LEVEL_ID,
-      sceneId: level.startScene,
-      checkpointSceneId: level.startScene,
-      decisions: {}, // id -> {correct: bool, timeLeft: number}
+      episodeId: GAME_ID,
+      sceneId: episode.startScene,
+      checkpointSceneId: episode.startScene,
+      decisions: {}, // id -> {correct: bool, timeLeft: number, failTag}
+      inspectedClues: {}, // clueId -> true
       failed: false,
       failTag: null,
+      failedDecisionId: null,
       completed: false,
       muted: loadSettings().muted || false,
     };
@@ -115,10 +130,12 @@
   function saveGame() {
     try {
       const data = {
-        levelId: state.levelId,
+        episodeId: state.episodeId,
         sceneId: currentSceneId || state.sceneId,
         checkpointSceneId: state.checkpointSceneId,
         decisions: state.decisions,
+        inspectedClues: state.inspectedClues,
+        failedDecisionId: state.failedDecisionId,
         completed: state.completed,
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -129,7 +146,7 @@
       const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return null;
       const data = JSON.parse(raw);
-      if (!data || data.levelId !== LEVEL_ID) return null;
+      if (!data || data.episodeId !== GAME_ID) return null;
       return data;
     } catch { return null; }
   }
@@ -150,6 +167,9 @@
     lights_out: 'assets/audio/lights_out.wav',
     call_end: 'assets/audio/call_end.wav',
     car_drive: 'assets/audio/car_drive.wav',
+    door_handle: 'assets/audio/door_handle.wav',
+    phone_buzz: 'assets/audio/phone_buzz.wav',
+    keycard_beep: 'assets/audio/keycard_beep.wav',
   };
 
   const audioCache = {};
@@ -242,28 +262,52 @@
       synth.onvoiceschanged = loadVoices;
     }
 
-    function pickVoice(preferredLangs = ['en-NG','en-GB','en-US','en']) {
+    function voiceGender(v) {
+      const n = ((v.name||'') + ' ' + (v.voiceURI||'')).toLowerCase();
+      if (/female|woman|samantha|victoria|karen|moira|tessa|fiona|serena|zira|eva|jenny|aria|sara|susan|hazel|linda|heera|google uk english female/.test(n)) return 'female';
+      if (/male|man|daniel|david|mark|james|george|oliver|thomas|guy|arthur|ryan|christopher|eric|liam|google uk english male/.test(n)) return 'male';
+      return 'unknown';
+    }
+
+    function pickVoice(preferredLangs = ['en-NG','en-GB','en-US','en'], gender = 'any') {
       if (!voices.length) loadVoices();
+      const langMatches = [];
       for (const lang of preferredLangs) {
-        const v = voices.find(x => (x.lang || '').toLowerCase().startsWith(lang.toLowerCase()));
-        if (v) return v;
+        for (const v of voices) {
+          if ((v.lang || '').toLowerCase().startsWith(lang.toLowerCase())) langMatches.push(v);
+        }
       }
-      return voices[0] || null;
+      const pool = langMatches.length ? langMatches : voices.slice();
+      if (gender === 'male' || gender === 'female') {
+        const g = pool.find(v => voiceGender(v) === gender);
+        if (g) return g;
+        // try any lang with desired gender
+        const g2 = voices.find(v => voiceGender(v) === gender);
+        if (g2) return g2;
+      }
+      return pool[0] || voices[0] || null;
     }
 
     function profileFor(line) {
       const speaker = (line.speaker || '').toLowerCase();
       const type = line.type;
-      if (type === 'narration') return { rate: 0.98, pitch: 0.92, volume: 0.95, langs: ['en-NG','en-GB','en-US','en'] };
-      if (speaker.includes('mrs. okonkwo') || speaker.includes('mrs okonkwo')) return { rate: 0.95, pitch: 1.05, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
-      if (speaker.includes('chika')) return { rate: 1.02, pitch: 1.15, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
-      if (speaker.includes('guard')) return { rate: 0.95, pitch: 0.8, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
-      if (speaker.includes('baby')) return { rate: 1.05, pitch: 1.35, volume: 0.95, langs: ['en-NG','en-GB','en-US','en'] };
-      if (speaker.includes('neighbour')) return { rate: 0.98, pitch: 0.9, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
-      if (speaker.includes('man at gate')) return { rate: 1.0, pitch: 0.85, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
-      if (speaker.includes('voice on phone') || speaker.includes('phone')) return { rate: 0.97, pitch: 0.95, volume: 0.95, langs: ['en-NG','en-GB','en-US','en'] };
-      if (speaker === 'you') return { rate: 1.0, pitch: 1.0, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
-      return { rate: 1.0, pitch: 1.0, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+      // Room 412 characters
+      if (speaker.includes('tunde')) return { rate: 0.98, pitch: 0.88, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'male' };
+      if (speaker.includes('amara')) return { rate: 0.95, pitch: 1.08, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'female' };
+      if (speaker.includes('kemi')) return { rate: 1.03, pitch: 1.18, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'female' };
+      if (speaker.includes('bassey') || speaker.includes('receptionist')) return { rate: 0.94, pitch: 0.82, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'male' };
+      if (speaker.includes('security')) return { rate: 0.92, pitch: 0.75, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'male' };
+      // Legacy / general
+      if (type === 'narration') return { rate: 0.98, pitch: 0.92, volume: 0.95, langs: ['en-NG','en-GB','en-US','en'], gender: 'any' };
+      if (speaker.includes('mrs. okonkwo') || speaker.includes('mrs okonkwo')) return { rate: 0.95, pitch: 1.05, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'female' };
+      if (speaker.includes('chika')) return { rate: 1.02, pitch: 1.15, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'female' };
+      if (speaker.includes('guard')) return { rate: 0.95, pitch: 0.8, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'male' };
+      if (speaker.includes('baby')) return { rate: 1.05, pitch: 1.35, volume: 0.95, langs: ['en-NG','en-GB','en-US','en'], gender: 'female' };
+      if (speaker.includes('neighbour')) return { rate: 0.98, pitch: 0.9, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'male' };
+      if (speaker.includes('man at gate')) return { rate: 1.0, pitch: 0.85, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'male' };
+      if (speaker.includes('voice on phone') || speaker.includes('phone')) return { rate: 0.97, pitch: 0.95, volume: 0.95, langs: ['en-NG','en-GB','en-US','en'], gender: 'any' };
+      if (speaker === 'you') return { rate: 1.0, pitch: 0.95, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'male' };
+      return { rate: 1.0, pitch: 1.0, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'any' };
     }
 
     function stop() {
@@ -277,9 +321,9 @@
       const text = typeof lineOrText === 'string' ? lineOrText : (lineOrText.text || '');
       if (!text.trim()) return;
       stop();
-      const profile = typeof lineOrText === 'object' ? profileFor(lineOrText) : { rate: 1, pitch: 1, volume: 1, langs: ['en-NG','en-GB','en-US','en'] };
+      const profile = typeof lineOrText === 'object' ? profileFor(lineOrText) : { rate: 1, pitch: 1, volume: 1, langs: ['en-NG','en-GB','en-US','en'], gender: 'any' };
       const u = new SpeechSynthesisUtterance(text);
-      const voice = pickVoice(profile.langs);
+      const voice = pickVoice(profile.langs, profile.gender || 'any');
       if (voice) u.voice = voice;
       u.rate = opts.rate ?? profile.rate;
       u.pitch = opts.pitch ?? profile.pitch;
@@ -309,7 +353,7 @@
   }
 
   function collectSceneImages(sceneId, depth = 1) {
-    const sc = level.scenes[sceneId];
+    const sc = episode.scenes[sceneId];
     if (!sc) return [];
     const imgs = [];
     if (sc.image) imgs.push(sc.image);
@@ -332,8 +376,8 @@
   // UI HELPERS
   // ============================
   function showScreen(name) {
-    ['screenTitle','screenStory','screenRules','screenDecision','screenGameover','screenWin'].forEach(k => {
-      dom[k].classList.add('hidden');
+    ['screenTitle','screenStory','screenRules','screenDecision','screenGameover','screenWin','screenInspect'].forEach(k => {
+      if (dom[k]) dom[k].classList.add('hidden');
     });
     const map = {
       title: dom.screenTitle,
@@ -342,8 +386,11 @@
       decision: dom.screenDecision,
       gameover: dom.screenGameover,
       win: dom.screenWin,
+      inspect: dom.screenInspect,
     };
     if (map[name]) map[name].classList.remove('hidden');
+    // Skip button only during story
+    if (dom.skipBtn) dom.skipBtn.classList.toggle('hidden', name !== 'story');
   }
 
   function setChapter(text) {
@@ -388,6 +435,7 @@
   function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
   function waitForTap() {
+    if (skipSceneRequested) return Promise.resolve();
     waitingTap = true;
     dom.tapHint.style.visibility = 'visible';
     return new Promise(resolve => { tapResolver = resolve; });
@@ -444,13 +492,13 @@
     Voice.stop();
     currentSceneId = sceneId;
     state.sceneId = sceneId;
-    currentScene = level.scenes[sceneId];
+    currentScene = episode.scenes[sceneId];
     if (!currentScene) {
       console.error('Missing scene', sceneId);
       return;
     }
     // If this scene leads into a decision, mark it as checkpoint (retry point)
-    if (currentScene.next && level.scenes[currentScene.next] && level.scenes[currentScene.next].type === 'decision') {
+    if (currentScene.next && episode.scenes[currentScene.next] && episode.scenes[currentScene.next].type === 'decision') {
       state.checkpointSceneId = sceneId;
     }
     saveGame();
@@ -465,6 +513,7 @@
       case 'decision': return runDecision(currentScene);
       case 'failure_sequence': return runFailureSequence(currentScene);
       case 'ending': return runDialogue(currentScene, { ending: true });
+      case 'inspection': return runInspection(currentScene);
       case 'game_over': return runGameOver(currentScene);
       case 'win': return showWin();
       default:
@@ -502,14 +551,17 @@
   async function runDialogue(sc, opts = {}) {
     showScreen('story');
     setDangerPulse(false);
+    skipSceneRequested = false;
     if (sc.image) setBg(sc.image);
 
     const lines = sc.lines || [];
     for (let i = 0; i < lines.length; i++) {
+      if (skipSceneRequested) break;
       lineIndex = i;
       const line = lines[i];
       await showLine(line);
     }
+    skipSceneRequested = false;
 
     if (opts.ending || sc.next === 'win_screen') {
       return showWin();
@@ -561,6 +613,81 @@
 
     await waitForTap();
     Voice.stop();
+  }
+
+  // ============================
+  // INSPECTION (Act 1 clues)
+  // ============================
+  async function runInspection(sc) {
+    showScreen('inspect');
+    setDangerPulse(false);
+    Voice.stop();
+    if (sc.image) setBg(sc.image);
+    if (dom.inspectTitle) dom.inspectTitle.textContent = sc.heading || 'Inspect the Room';
+    const clues = sc.clues || [];
+    const grid = dom.inspectGrid;
+    grid.innerHTML = '';
+
+    function renderClues() {
+      grid.innerHTML = '';
+      let allDone = true;
+      clues.forEach(clue => {
+        const inspected = !!state.inspectedClues[clue.id];
+        if (!inspected) allDone = false;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'inspect-clue' + (inspected ? ' inspected' : '');
+        btn.innerHTML = `
+          <img class="inspect-clue-img" src="${clue.image}" alt="${escapeHtml(clue.title)}" loading="lazy" />
+          <div class="inspect-clue-name">${escapeHtml(clue.title)}</div>
+          <div class="inspect-clue-status">${inspected ? 'Inspected' : 'Tap to inspect'}</div>
+        `;
+        btn.addEventListener('click', () => openClue(clue));
+        grid.appendChild(btn);
+      });
+      if (dom.inspectContinue) {
+        dom.inspectContinue.disabled = !allDone;
+        dom.inspectContinue.textContent = allDone ? 'Continue' : `Inspect all clues (${Object.keys(state.inspectedClues).filter(id => clues.find(c=>c.id===id)).length}/${clues.length})`;
+      }
+    }
+
+    function openClue(clue) {
+      if (!dom.inspectOverlay) return;
+      dom.inspectOverlayImg.src = clue.image;
+      dom.inspectOverlayImg.alt = clue.title || 'Clue';
+      dom.inspectOverlayTitle.textContent = clue.title || '';
+      dom.inspectOverlayDesc.textContent = clue.description || '';
+      dom.inspectOverlay.classList.remove('hidden');
+      Voice.speak({ type: 'narration', text: clue.description || clue.title || '' });
+    }
+
+    function closeClue() {
+      if (!dom.inspectOverlay) return;
+      // mark currently open clue as inspected by matching title
+      const title = dom.inspectOverlayTitle.textContent;
+      const clue = clues.find(c => c.title === title);
+      if (clue) state.inspectedClues[clue.id] = true;
+      dom.inspectOverlay.classList.add('hidden');
+      Voice.stop();
+      saveGame();
+      renderClues();
+    }
+
+    dom.inspectOverlayClose.onclick = closeClue;
+    dom.inspectOverlay.onclick = (e) => { if (e.target === dom.inspectOverlay) closeClue(); };
+
+    renderClues();
+    // if already all inspected (resume), enable continue
+    renderClues();
+
+    await new Promise(resolve => {
+      dom.inspectContinue.onclick = () => {
+        if (dom.inspectContinue.disabled) return;
+        dom.inspectOverlay.classList.add('hidden');
+        resolve();
+      };
+    });
+    goToScene(sc.next);
   }
 
   // ============================
@@ -652,7 +779,7 @@
     dom.timerRingFg.style.strokeDasharray = String(RING_CIRCUMFERENCE);
     dom.timerRingFg.style.strokeDashoffset = String(offset);
     dom.timerText.textContent = Math.ceil(Math.max(0, decisionRemaining));
-    const urgent = decisionRemaining <= 2.1;
+    const urgent = decisionRemaining <= LOW_TIME_THRESHOLD;
     dom.timerRingFg.classList.toggle('urgent', urgent);
     dom.timerText.classList.toggle('urgent', urgent);
   }
@@ -667,7 +794,7 @@
       decisionRemaining = Math.max(0, decisionTotal - elapsed);
       updateDecisionTimerUI();
 
-      if (decisionRemaining <= 2.1 && !heartbeatStarted) {
+      if (decisionRemaining <= LOW_TIME_THRESHOLD && !heartbeatStarted) {
         heartbeatStarted = true;
         setDangerPulse(true);
         playSfx('heartbeat', { loop: true, volume: 0.45 });
@@ -709,7 +836,7 @@
 
     if (correct) {
       // Set checkpoint to the scene after the correct-dialogue scene
-      const correctScene = level.scenes[sc.nextCorrect];
+      const correctScene = episode.scenes[sc.nextCorrect];
       if (correctScene && correctScene.next) {
         state.checkpointSceneId = correctScene.next;
       } else {
@@ -737,6 +864,7 @@
   function triggerFailure(sc, failTag) {
     state.failed = true;
     state.failTag = failTag;
+    state.failedDecisionId = sc.id;
     saveGame();
     // Red flash + shake
     flashRed(600);
@@ -778,19 +906,18 @@
   // ============================
   function calcTruthScore() {
     const decisions = Object.values(state.decisions);
-    const totalDecisions = 7; // Level 1 has 7 decisions
+    const totalDecisions = 6; // Room 412 has 6 decisions
     let correctCount = 0;
     let scoreSum = 0;
     decisions.forEach(d => {
       if (d.correct) {
         correctCount++;
-        const t = d.total || 5;
+        const t = d.total || 8;
         const ratio = Math.max(0, Math.min(1, d.timeLeft / t));
         // 70 base + up to 30 for speed
         scoreSum += 70 + Math.round(ratio * 30);
       }
     });
-    // Normalize over 7 decisions
     const normalized = Math.round(scoreSum / totalDecisions);
     return { score: Math.max(0, Math.min(100, normalized)), correctCount, totalDecisions };
   }
@@ -809,12 +936,14 @@
     setDangerPulse(false);
     stopAllSfx();
     if (sc && sc.image) setBg(sc.image);
+    if (dom.gameoverTitle) dom.gameoverTitle.textContent = (sc && sc.title) || 'YOU GOT CAUGHT.';
+    if (dom.gameoverSub) dom.gameoverSub.textContent = (sc && sc.message) || "You're not good enough to be a liar.";
     flashRed(500);
     shakeScreen();
 
     const { score, correctCount, totalDecisions } = calcTruthScore();
     dom.scoreValue.textContent = String(score);
-    dom.scoreDetail.textContent = `${correctCount}/${totalDecisions} correct • ${score >= 70 ? 'So close.' : score >= 40 ? 'The house got you.' : 'The night swallowed you whole.'}`;
+    dom.scoreDetail.textContent = `Truth Score: ${correctCount} / ${totalDecisions}`;
     animateScoreRing(dom.scoreRingFg, score);
     dom.adNote.classList.add('hidden');
     dom.adNote.textContent = '';
@@ -834,7 +963,7 @@
 
     const { score, correctCount, totalDecisions } = calcTruthScore();
     dom.winScoreValue.textContent = String(score);
-    dom.winScoreDetail.textContent = `${correctCount}/${totalDecisions} correct • ${score === 100 ? 'Perfect liar. Mrs. Okonkwo would be proud.' : score >= 80 ? 'Sharp memory. Steady nerves.' : 'You survived... barely.'}`;
+    dom.winScoreDetail.textContent = `Truth Score: ${correctCount} / ${totalDecisions}`;
     animateScoreRing(dom.winScoreRingFg, score);
   }
 
@@ -845,15 +974,15 @@
     const { score, correctCount, totalDecisions } = calcTruthScore();
     const survived = state.completed && !state.failed;
     if (survived) {
-      return `I survived The Night Nanny in The Liar's Game! Truth Score: ${score}/100 (${correctCount}/${totalDecisions} correct). Can you survive 7 hours in a Lagos mansion?`;
+      return `I survived Room 412 in The Liar's Game! Truth Score: ${correctCount}/${totalDecisions}. I lied my way out of Victoria Island. Can you?`;
     }
-    return `I got a Truth Score of ${score}/100 (${correctCount}/${totalDecisions} correct) in The Liar's Game: The Night Nanny. I wasn't good enough to be a liar... yet. Can you do better?`;
+    return `I got caught in Room 412 (The Liar's Game). Truth Score: ${correctCount}/${totalDecisions}. I wasn't good enough to be a liar... yet. Can you survive?`;
   }
 
   async function shareScore(btn) {
     const text = getShareText();
     const shareData = {
-      title: "The Liar's Game — The Night Nanny",
+      title: "The Liar's Game — Room 412",
       text,
       url: window.location.href
     };
@@ -905,8 +1034,7 @@
     // Clear the failed flag but keep progress/checkpoint and correct decisions
     state.failed = false;
     state.failTag = null;
-    // Remove the last failed decision record (the one that caused failure)
-    // Keep correct ones; failed decisions are fine to clear so score reflects retry path.
+    state.failedDecisionId = null;
     for (const [id, d] of Object.entries(state.decisions)) {
       if (!d.correct) delete state.decisions[id];
     }
@@ -924,7 +1052,7 @@
     state = freshState();
     state.muted = loadSettings().muted || false;
     updateMuteBtn();
-    goToScene(level.startScene);
+    goToScene(episode.startScene);
   }
 
   // ============================
@@ -981,6 +1109,16 @@
       saveSettings();
     });
 
+    if (dom.skipBtn) {
+      dom.skipBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        skipSceneRequested = true;
+        Voice.stop();
+        if (typing) skipType();
+        resolveTap();
+      });
+    }
+
     dom.btnRetry.addEventListener('click', () => { unlockAudio(); resumeFromCheckpoint(); });
     dom.btnAd.addEventListener('click', () => { unlockAudio(); watchAdToContinue(); });
     dom.btnShare.addEventListener('click', () => shareScore(dom.btnShare));
@@ -994,23 +1132,25 @@
     const saved = loadGame();
     if (saved && !saved.completed) {
       // Restore state
-      state.checkpointSceneId = saved.checkpointSceneId || level.startScene;
+      state.checkpointSceneId = saved.checkpointSceneId || episode.startScene;
       state.decisions = saved.decisions || {};
+      state.inspectedClues = saved.inspectedClues || {};
+      state.failedDecisionId = saved.failedDecisionId || null;
       state.completed = !!saved.completed;
       state.sceneId = saved.sceneId || state.checkpointSceneId;
       // If they were mid-failure/gameover, resume at checkpoint
-      const resumeTarget = (saved.sceneId === 'game_over' || level.scenes[saved.sceneId]?.type === 'failure_sequence')
+      const resumeTarget = (saved.sceneId === 'game_over' || episode.scenes[saved.sceneId]?.type === 'failure_sequence')
         ? state.checkpointSceneId
         : (saved.sceneId || state.checkpointSceneId);
       preloadScene(resumeTarget, 2);
       goToScene(resumeTarget);
     } else if (saved && saved.completed) {
       // Let them replay from title, but keep it simple
-      preloadScene(level.startScene, 2);
-      goToScene(level.startScene);
+      preloadScene(episode.startScene, 2);
+      goToScene(episode.startScene);
     } else {
-      preloadScene(level.startScene, 2);
-      goToScene(level.startScene);
+      preloadScene(episode.startScene, 2);
+      goToScene(episode.startScene);
     }
   }
 
