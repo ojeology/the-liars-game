@@ -1,7 +1,7 @@
 /**
- * The Liar's Game — Level 1: The Night Nanny
- * Engine: data-driven cinematic visual novel.
- * All story content comes from story.js (LEVELS). To add Level 2, add data there.
+ * The Liar's Game — Episode 1: ROOM 412
+ * Engine: data-driven cinematic psychological deception game.
+ * All episode content comes from story.js (EPISODES). Add Episode 2 as new data.
  */
 (() => {
   'use strict';
@@ -9,12 +9,13 @@
   // ============================
   // CONFIG
   // ============================
-  const LEVEL_ID = 'level1';
-  const SAVE_KEY = 'liars_game_save_v1';
+  const GAME_ID = 'room412';
+  const SAVE_KEY = 'liars_game_room412_v1';
   const SETTINGS_KEY = 'liars_game_settings_v1';
-  const DECISION_TIME = 5; // seconds (can be overridden per scene)
+  const DECISION_TIME = 8; // seconds (can be overridden per scene)
   const TYPE_SPEED_MS = 18; // ms per char for typewriter
   const RULES_DURATION_MS = 8000;
+  const LOW_TIME_THRESHOLD = 3.1; // seconds - tension FX trigger
 
   // ============================
   // DOM
