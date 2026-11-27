@@ -9,7 +9,7 @@ function finish(g,distance,label){g.mode='result';g.speed=0;g.vy=0;g.height=0;g.
 function update(g,dt){if(g.paused)return;dt=clamp(dt,0,.05);g.time+=dt;if(g.mode==='run'){g.x+=g.speed*dt;g.speed=Math.max(0,g.speed-CONFIG.drag*dt);if(g.x>CONFIG.line)finish(g,null,'FOUL!');}else if(g.mode==='air'){g.air+=dt;g.x+=g.speed*dt;g.height+=g.vy*dt;g.vy-=CONFIG.gravity*dt;if(g.height<=0){g.height=0;const distance=Math.max(0,(g.x-CONFIG.line)/CONFIG.unitsPerMeter);finish(g,distance,distance<1?'SHORT!':'NICE JUMP!');}}else if(g.mode==='result'){g.resultTime-=dt;if(g.resultTime<=0){if(g.attempt>=CONFIG.attempts)g.mode='complete';else{g.attempt++;g.x=0;g.height=0;g.speed=0;g.lastFoot=null;g.boosted=false;g.boostResult='';g.mode='run';}}}}
 if(typeof module!=='undefined')module.exports={CONFIG,makeGame,step,jump,update};
 if(typeof document!=='undefined'){
-const $=id=>document.getElementById(id),canvas=$('canvas'),ctx=canvas.getContext('2d');let game=makeGame(),muted=false,audio=null,last=0,shownComplete=false,canvasW=0,canvasH=0,dpr=1;const bg=new Image();bg.src='assets/stadium.webp?v=1';const athleteSprites={};for(const pose of ['idle','run','air']){const img=new Image();img.src='assets/athlete-'+pose+'.webp?v=1';athleteSprites[pose]=img;}let record=0;try{record=Number(localStorage.getItem('streetgames-best')||0)}catch(e){}
+const $=id=>document.getElementById(id),canvas=$('canvas'),ctx=canvas.getContext('2d');let game=makeGame(),muted=false,audio=null,last=0,shownComplete=false,canvasW=0,canvasH=0,dpr=1;const bg=new Image();bg.src='assets/stadium.webp?v=1';const athleteRig=window.createAthleteRig ? window.createAthleteRig() : null;let record=0;try{record=Number(localStorage.getItem('streetgames-best')||0)}catch(e){}
 function tone(f,d=.09){if(muted)return;try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();let o=audio.createOscillator(),v=audio.createGain(),t=audio.currentTime;o.type='triangle';o.frequency.value=f;v.gain.setValueAtTime(.06,t);v.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(v);v.connect(audio.destination);o.start();o.stop(t+d)}catch(e){}}
 function resize(){const r=canvas.getBoundingClientRect();canvasW=r.width;canvasH=r.height;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(canvasW*dpr);canvas.height=Math.round(canvasH*dpr)}window.addEventListener('resize',resize);
 function start(){game=makeGame();game.mode='run';shownComplete=false;$('pause').textContent='Ⅱ';$('overlay').classList.add('hidden');$('share').hidden=true;tone(520);}
@@ -39,14 +39,13 @@ if(game.paused){ctx.fillStyle='#0a143cb0';ctx.fillRect(0,0,w,h);ctx.fillStyle='w
 function drawAthlete(x,ground,height,scale){
  const s=scale*1.22, airborne=game.mode==='air', running=game.mode==='run'&&game.speed>4;
  const cycle=running?Math.sin(game.time*(11+game.speed/35)):0;
- // Realistic pre-rendered poses; the procedural athlete remains a fallback if
- // an image fails to load. Bob, lean and squash add motion without affecting physics.
- const pose=airborne?'air':running?'run':'idle', sprite=athleteSprites[pose];
- if(sprite && sprite.complete && sprite.naturalWidth){
+ // Composite the animated 3D skeleton above the original 2D track.
+ if(athleteRig){
    ctx.save();ctx.fillStyle='rgba(13,24,37,.24)';ctx.beginPath();ctx.ellipse(x,ground,Math.max(7,18*s-height*.08),4*s,0,0,Math.PI*2);ctx.fill();ctx.restore();
-   const h=(airborne?95:110)*s, w=h*sprite.naturalWidth/sprite.naturalHeight;
-   ctx.save();ctx.translate(x,ground-height*scale-(running?Math.abs(cycle)*2*s:0));
-   if(running)ctx.rotate(cycle*.025);ctx.drawImage(sprite,-w*.48,-h,w,h);ctx.restore();return;
+   athleteRig.animate(game);
+   const h=165*s,w=h*.75;
+   // Orthographic camera's ground line sits about 78% down the rig canvas.
+   ctx.drawImage(athleteRig.canvas,x-w*.5,ground-height*scale-h*.80,w,h);return;
  }
  const bob=running?Math.abs(cycle)*2:0;
  ctx.save();ctx.fillStyle='rgba(13,24,37,.24)';ctx.beginPath();ctx.ellipse(x,ground,Math.max(7,18*s-height*.08),4*s,0,0,Math.PI*2);ctx.fill();ctx.restore();
