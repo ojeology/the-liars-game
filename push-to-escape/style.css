@@ -88,3 +88,31 @@ html, body { margin:0; padding:0; height:100%; background:#0b1020; color:#fff;
   #signal-light { font-size:22px; }
   #signal-text { font-size:15px; }
 }
+
+/* Cinematic industrial arcade skin: the HUD remains outside the game canvas. */
+html,body{background:#070f14;color:#eef5ef}
+#game-wrap{background:#101c22;box-shadow:0 0 80px #000}
+#topbar{padding:10px 14px;background:#0c161c;border-bottom:1px solid #314044}
+#title{font-size:16px;line-height:1.05;font-weight:1000;letter-spacing:.035em;color:#eef4e7}
+#title small{display:block;color:#8ba3a3;font-size:9px;letter-spacing:.21em;margin-bottom:5px}
+#title em{color:#f3b75c;font-style:normal}
+#topbtns{gap:5px}.icon-btn{height:36px;width:36px;border-radius:8px;background:#1b2b30;border:1px solid #455454;font-size:17px}
+#btn-mute{width:52px;font-size:9px;font-weight:900;letter-spacing:.04em}
+#hud{padding:9px 12px;background:#101e24;border-bottom:1px solid #263e43;gap:12px}
+#signal-box{flex-basis:106px;border-radius:9px;padding:7px 5px;box-shadow:inset 0 0 18px #071610;border-width:1px}
+#signal-light{font-size:24px}#signal-text{font-size:17px}#signal-sub{font-size:10px}
+#meters{gap:8px}.meter-label{font-size:10px;letter-spacing:.13em;color:#b5c9c3}.meter-track{height:9px;border:none;background:#26383d}
+#progress-fill{background:linear-gradient(90deg,#54ba8b,#b7eeb7)}#water-fill{background:linear-gradient(90deg,#1a8eaa,#7ee7ea)}
+.meter-val{font-size:11px;color:#d6e7de}.meter-row.small{font-size:10px;color:#9eb4af;letter-spacing:.04em}
+#canvas-wrap{background:#12232a}#toast{top:16px;background:#101f24e8;border:1px solid #88a99d;color:#f1f4d8;letter-spacing:.16em;font-size:12px;border-radius:4px}
+#controls{padding:10px 14px max(12px,env(safe-area-inset-bottom));background:#101c22;border-top:1px solid #415356}
+#push-btn{min-height:72px;border-radius:9px;border:1px solid #dfba75;box-shadow:inset 0 2px #ffdd9a,0 5px 0 #6e4325,0 8px 15px #0008;background:linear-gradient(#e9b45f,#b87734);color:#172322;font-size:20px;letter-spacing:.15em;text-shadow:0 1px #ffffff44}
+#push-btn-sub{font-size:10px;letter-spacing:.12em;color:#304239}#push-btn.pushing{background:linear-gradient(#ffca75,#c78c42);transform:translateY(3px);box-shadow:inset 0 2px #ffdd9a,0 2px 0 #6e4325}
+#push-btn.wait{background:linear-gradient(#f4d978,#b4943d);border-color:#ffe3a0}#push-btn.danger{background:linear-gradient(#c96f5e,#91463d);border-color:#e69a83}
+.overlay{background:rgba(4,12,17,.77)}.panel{text-align:left;background:linear-gradient(155deg,#21343a,#101e25 70%);border:1px solid #5a6b65;border-radius:12px;padding:24px;box-shadow:0 25px 80px #000b;position:relative}
+.panel:before{content:"";position:absolute;top:0;left:24px;width:70px;height:3px;background:#eab466}
+.eyebrow{font-size:10px;font-weight:900;letter-spacing:.2em;color:#9eb7b1;margin-bottom:16px}.eyebrow span{color:#f4b86b}
+.panel h1{font-size:32px;line-height:1;letter-spacing:-.025em;font-weight:1000;color:#fff4da}.panel p{color:#bfcec7;font-size:14px}
+#overlay-rules{gap:5px;margin:18px 0}.rule{border-radius:5px;padding:8px 10px;font-size:11px;letter-spacing:.08em;border-left-width:3px}.rule span{font-size:11px;letter-spacing:0;color:#c7d7cd}
+.big-btn{border-radius:7px;background:linear-gradient(#efc47b,#bc813d);color:#152327;letter-spacing:.1em;box-shadow:0 4px 0 #704925}.panel .hint{font-size:10px;color:#98ada5;text-align:center}
+@media(max-height:560px){#title small{display:none}#hud{padding:4px 10px}#push-btn{min-height:52px}#controls{padding:6px 12px}}

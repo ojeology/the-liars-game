@@ -295,9 +295,9 @@ function update(dt) {
     }
     Game.signal = next;
     Game.signalTimer = signalDuration(next);
-    if (next === 'blink') { AudioEngine.warn(); showToast('⚠️ RELEASE!'); }
-    if (next === 'red') { AudioEngine.red(); showToast('🔴 STOP!'); }
-    if (next === 'green') { AudioEngine.green(); showToast('🟢 PUSH!'); }
+    if (next === 'blink') { AudioEngine.warn(); showToast('RELEASE!'); }
+    if (next === 'red') { AudioEngine.red(); showToast('STOP!'); }
+    if (next === 'green') { AudioEngine.green(); showToast('PUSH!'); }
   }
 
   // --- Red rule: any pushing during red = immediate loss ---
@@ -377,6 +377,7 @@ function triggerWin() {
 
 // ---------- Rendering ----------
 let canvas = null, ctx = null, cssW = 0, cssH = 0, dpr = 1, scaleF = 1;
+let backgroundArt = null;
 
 function resize() {
   if (!canvas) return;
@@ -393,51 +394,35 @@ function resize() {
 function worldToScreenX(wx) { return (wx - Game.camX) * scaleF; }
 
 function drawBackground() {
-  // Sky gradient
-  const g = ctx.createLinearGradient(0, 0, 0, cssH);
-  g.addColorStop(0, '#2b4a7a');
-  g.addColorStop(0.55, '#e8875a');
-  g.addColorStop(1, '#3a2a4a');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, cssW, cssH);
-
-  // Sun
-  ctx.fillStyle = 'rgba(255,220,150,0.9)';
-  ctx.beginPath(); ctx.arc(cssW * 0.78, cssH * 0.22, 34 * scaleF + 10, 0, Math.PI * 2); ctx.fill();
-
-  // Distant skyline (parallax)
-  ctx.fillStyle = 'rgba(20,25,50,0.55)';
-  const baseY = CONFIG.GROUND_Y * scaleF;
-  const off = (Game.camX * 0.25 * scaleF) % 220;
-  for (let i = -1; i < 6; i++) {
-    const bx = i * 220 - off;
-    const bh = 90 + ((i * 37) % 70);
-    ctx.fillRect(bx, baseY - bh * scaleF, 140 * scaleF, bh * scaleF);
-    ctx.fillRect(bx + 20 * scaleF, baseY - (bh + 30) * scaleF, 60 * scaleF, 30 * scaleF);
+  ctx.fillStyle = '#14242d'; ctx.fillRect(0, 0, cssW, cssH);
+  if (backgroundArt && backgroundArt.complete && backgroundArt.naturalWidth) {
+    // Cover the viewport, with a gentle parallax drift that stays inside the image.
+    const iw = backgroundArt.naturalWidth, ih = backgroundArt.naturalHeight;
+    const zoom = Math.max(cssW / iw, cssH / ih) * 1.12;
+    const w = iw * zoom, h = ih * zoom;
+    const drift = (0.5 + 0.5 * Math.sin(Game.camX * 0.001)) * Math.max(0, w - cssW);
+    ctx.drawImage(backgroundArt, -drift, (cssH - h) * 0.63, w, h);
   }
-  // Clouds
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  const coff = (Game.camX * 0.1 * scaleF) % 400;
-  for (let i = 0; i < 4; i++) {
-    const cx = i * 400 - coff + 60;
-    ctx.beginPath();
-    ctx.ellipse(cx, 60 * scaleF + (i % 2) * 30, 70 * scaleF, 16 * scaleF, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Atmospheric veil separates play objects from background detail.
+  const fog = ctx.createLinearGradient(0, 0, 0, cssH);
+  fog.addColorStop(0, 'rgba(5,14,23,.22)');
+  fog.addColorStop(.65, 'rgba(17,37,45,.14)');
+  fog.addColorStop(1, 'rgba(4,13,18,.60)');
+  ctx.fillStyle = fog; ctx.fillRect(0, 0, cssW, cssH);
 }
 
 function drawGround() {
   const gy = CONFIG.GROUND_Y * scaleF;
-  ctx.fillStyle = '#5a4632';
-  ctx.fillRect(0, gy, cssW, cssH - gy);
-  ctx.fillStyle = '#7a6248';
-  ctx.fillRect(0, gy, cssW, 10 * scaleF);
-  // Ground texture lines (scroll with camera)
-  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-  ctx.lineWidth = 2;
-  const off = (Game.camX * scaleF) % 60;
-  for (let x = -off; x < cssW; x += 60) {
-    ctx.beginPath(); ctx.moveTo(x, gy + 18 * scaleF); ctx.lineTo(x + 24, gy + 18 * scaleF); ctx.stroke();
+  const g = ctx.createLinearGradient(0, gy, 0, cssH);
+  g.addColorStop(0, '#4c5b5a'); g.addColorStop(.16, '#263a3d'); g.addColorStop(1, '#0d1b22');
+  ctx.fillStyle = g; ctx.fillRect(0, gy, cssW, cssH - gy);
+  ctx.fillStyle = '#82918a'; ctx.fillRect(0, gy, cssW, 3 * scaleF);
+  ctx.fillStyle = '#172a31'; ctx.fillRect(0, gy + 5 * scaleF, cssW, 5 * scaleF);
+  const off = (Game.camX * scaleF) % (65 * scaleF);
+  ctx.strokeStyle = 'rgba(153,198,197,.19)'; ctx.lineWidth = 1;
+  for (let x = -off; x < cssW + 65 * scaleF; x += 65 * scaleF) {
+    ctx.beginPath(); ctx.moveTo(x, gy + 12 * scaleF); ctx.lineTo(x - 13 * scaleF, cssH); ctx.stroke();
+    ctx.fillStyle = 'rgba(211,221,200,.35)'; ctx.beginPath(); ctx.arc(x + 9 * scaleF, gy + 8 * scaleF, 1.2 * scaleF, 0, 7); ctx.fill();
   }
 }
 
@@ -483,20 +468,30 @@ function drawWall() {
   const bs = CONFIG.BRICK_SIZE * scaleF;
   const wobble = (Game.pushing && canPushInState(Game.signal) && Game.mode === 'playing')
     ? Math.sin(Game.time * 30) * 1.2 : 0;
-  const colors = ['#c0392b', '#d35400', '#b03a2e', '#ca6f1e', '#a93226', '#e67e22'];
+  const colors = ['#aa5e40', '#bd7651', '#a6533b', '#c47d55', '#9c5740', '#b86a48'];
+  ctx.fillStyle = '#243137';
+  ctx.fillRect(wx - 3 * scaleF, gy - CONFIG.WALL_BRICKS_Y * bs - 3 * scaleF, CONFIG.WALL_BRICKS_X * bs + 6 * scaleF, CONFIG.WALL_BRICKS_Y * bs + 3 * scaleF);
   for (let row = 0; row < CONFIG.WALL_BRICKS_Y; row++) {
     for (let col = 0; col < CONFIG.WALL_BRICKS_X; col++) {
       const bx = wx + col * bs;
       const by = gy - (row + 1) * bs + wobble * (row === 0 ? 1 : 0.3);
       const c = colors[(row * CONFIG.WALL_BRICKS_X + col) % colors.length];
       ctx.fillStyle = c;
-      ctx.fillRect(bx + 1, by + 1, bs - 2, bs - 2);
+      ctx.fillRect(bx + 1.5, by + 1.5, bs - 3, bs - 3);
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.fillRect(bx + 1, by + 1, bs - 2, 4);
       ctx.fillStyle = 'rgba(0,0,0,0.22)';
       ctx.fillRect(bx + 1, by + bs - 5, bs - 2, 4);
+      ctx.fillStyle = 'rgba(56,29,24,.26)';
+      ctx.fillRect(bx + 4 * scaleF, by + (8 + (row + col) % 5) * scaleF, 8 * scaleF, 1 * scaleF);
+      ctx.fillRect(bx + 15 * scaleF, by + 17 * scaleF, 5 * scaleF, 1 * scaleF);
     }
   }
+  // A riveted steel border makes the masonry read as one heavy structure.
+  ctx.fillStyle = '#29393b'; ctx.fillRect(wx - 4 * scaleF, gy - CONFIG.WALL_BRICKS_Y * bs, 4 * scaleF, CONFIG.WALL_BRICKS_Y * bs);
+  ctx.fillRect(wx, gy - CONFIG.WALL_BRICKS_Y * bs - 3 * scaleF, CONFIG.WALL_BRICKS_X * bs, 4 * scaleF);
+  ctx.fillStyle = '#b5c3b4';
+  for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(wx - 2 * scaleF, gy - (12 + 28 * i) * scaleF, 1.1 * scaleF, 0, 7); ctx.fill(); }
   // Mortar outline
   ctx.strokeStyle = 'rgba(0,0,0,0.35)';
   ctx.lineWidth = 1;
@@ -518,6 +513,8 @@ function drawCharacter() {
   const cx = worldToScreenX(Game.mode === 'victory' ? lerp(characterX(), escapeX() + 45, victoryT) : characterX());
   const gy = CONFIG.GROUND_Y * scaleF;
   const s = scaleF;
+  // Enlarge the hero around his planted feet without changing world position.
+  ctx.save(); ctx.translate(cx, gy); ctx.scale(1.28, 1.28); ctx.translate(-cx, -gy);
   const isPushing = Game.pushing && canPushInState(Game.signal) && Game.mode === 'playing';
   const isWalking = isPushing;
   const isWarning = Game.signal === 'blink' && Game.mode === 'playing';
@@ -557,10 +554,14 @@ function drawCharacter() {
   ctx.beginPath(); ctx.arc(legB, gy - 2 * s, 4 * s, 0, Math.PI * 2); ctx.fill();
 
   // Torso (shirt)
-  ctx.fillStyle = '#f39c12';
+  ctx.fillStyle = '#e5a436';
   ctx.beginPath();
   ctx.roundRect(-9 * s, shoulderY, 18 * s, 24 * s, 6 * s);
   ctx.fill();
+  // Safety jacket trim, collar and straps help the hero read against floodwater.
+  ctx.fillStyle = '#ffe5a0'; ctx.fillRect(-8 * s, shoulderY + 14 * s, 16 * s, 2 * s);
+  ctx.fillStyle = '#734321'; ctx.fillRect(-2 * s, shoulderY + 2 * s, 3 * s, 20 * s);
+  ctx.fillStyle = '#edd3ad'; ctx.fillRect(-3 * s, shoulderY - 1 * s, 9 * s, 3 * s);
 
   // Arms
   ctx.strokeStyle = '#e67e22'; ctx.lineWidth = 6 * s;
@@ -588,7 +589,7 @@ function drawCharacter() {
   ctx.fillStyle = '#ffdbac';
   ctx.beginPath(); ctx.arc(2 * s, headY, 10 * s, 0, Math.PI * 2); ctx.fill();
   // Cap
-  ctx.fillStyle = '#e74c3c';
+  ctx.fillStyle = '#d75831';
   ctx.beginPath(); ctx.arc(2 * s, headY - 2 * s, 10 * s, Math.PI, 0); ctx.fill();
   ctx.fillRect(2 * s, headY - 3 * s, 12 * s, 3 * s);
   // Eye + mouth
@@ -615,6 +616,7 @@ function drawCharacter() {
     ctx.textAlign = 'center';
     ctx.fillText('!', cx, headY - 18 * s + Math.sin(Game.time * 10) * 2);
   }
+  ctx.restore();
 }
 
 // Water surface is a superposition of independent travelling waves in world
@@ -812,7 +814,7 @@ function updateHUD() {
   const w = Math.round(waterDanger() * 100);
   els.waterFill.style.width = w + '%';
   els.waterPct.textContent = w + '%';
-  els.hudTime.textContent = '⏱ ' + Game.time.toFixed(1) + 's';
+  els.hudTime.textContent = 'TIME ' + Game.time.toFixed(1) + 's';
   els.hudDist.textContent = 'Wall ' + Math.round(Game.wallX - CONFIG.WALL_START_X) + 'm / ' + CONFIG.ESCAPE_DISTANCE + 'm';
 }
 
@@ -823,8 +825,9 @@ function showGameOver(reason) {
     blink: 'You held too long — the blink ended while you were still pushing!',
     water: 'The water caught you. Push faster next time — obey the signal, but keep moving!',
   };
-  els.overlayTitle.textContent = '💀 YOU GOT CAUGHT';
+  els.overlayTitle.textContent = reason === 'water' ? 'THE FLOOD WON' : 'CAUGHT!';
   els.overlayMsg.textContent = msgs[reason] || msgs.water;
+  document.getElementById('overlay-rules').style.display = 'none';
   els.overlayStats.textContent =
     `Time: ${Game.time.toFixed(1)}s  •  Progress: ${Math.round(progress() * 100)}%  •  Water: ${Math.round(waterDanger() * 100)}%`;
   els.overlayBtn.textContent = '↻ TRY AGAIN';
@@ -834,8 +837,9 @@ function showGameOver(reason) {
 function showVictory() {
   if (!els.overlay) return;
   const score = Math.max(0, Math.round(1000 - Game.time * 20 + (1 - waterDanger()) * 500));
-  els.overlayTitle.textContent = '🎉 YOU ESCAPED!';
+  els.overlayTitle.textContent = 'YOU ESCAPED!';
   els.overlayMsg.textContent = 'You pushed the wall to safety and jumped to freedom. Great rhythm!';
+  document.getElementById('overlay-rules').style.display = 'none';
   els.overlayStats.textContent =
     `Time: ${Game.time.toFixed(1)}s  •  Score: ${score}  •  Water margin: ${Math.round((1 - waterDanger()) * 100)}%`;
   els.overlayBtn.textContent = '▶ PLAY AGAIN';
@@ -844,10 +848,11 @@ function showVictory() {
 
 function showMenu() {
   if (!els.overlay) return;
+  document.getElementById('overlay-rules').style.display = '';
   els.overlayTitle.textContent = 'PUSH TO ESCAPE';
   els.overlayMsg.textContent = 'The water is rising! Push the brick wall to the escape platform.';
   els.overlayStats.textContent = '';
-  els.overlayBtn.textContent = '▶ START';
+  els.overlayBtn.textContent = 'START RUN →';
   els.overlay.classList.remove('hidden');
 }
 
@@ -884,7 +889,7 @@ function startGame() {
   hideOverlays();
   AudioEngine.green();
   AudioEngine.startWater();
-  showToast('🟢 PUSH!');
+  showToast('PUSH!');
 }
 
 function bindInput() {
@@ -939,7 +944,7 @@ function toggleMute() {
   Game.muted = !Game.muted;
   AudioEngine.setEnabled(!Game.muted);
   if (!Game.muted && Game.mode === 'playing') { AudioEngine.ensure(); AudioEngine.startWater(); }
-  if (els.muteBtn) els.muteBtn.textContent = Game.muted ? '🔇' : '🔊';
+  if (els.muteBtn) els.muteBtn.textContent = Game.muted ? 'MUTED' : 'SOUND';
 }
 
 // ---------- Main loop ----------
@@ -961,6 +966,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
     canvas = document.getElementById('game-canvas');
     ctx = canvas.getContext('2d');
+    backgroundArt = new Image(); backgroundArt.src = 'assets/industrial-bg.webp';
     cacheEls();
     resize();
     window.addEventListener('resize', resize);
