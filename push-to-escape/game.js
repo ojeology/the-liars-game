@@ -966,7 +966,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
     canvas = document.getElementById('game-canvas');
     ctx = canvas.getContext('2d');
-    backgroundArt = new Image(); backgroundArt.src = 'assets/industrial-bg.webp';
+    backgroundArt = new Image(); backgroundArt.src = 'assets/industrial-bg.webp?v=d397433';
     cacheEls();
     resize();
     window.addEventListener('resize', resize);
