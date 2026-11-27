@@ -30,10 +30,48 @@ const scale=Math.min(1.5,Math.max(.75,h/380)),ground=h*.79,camera=Math.max(0,gam
 ctx.fillStyle='#8c4534';ctx.fillRect(0,ground,w,h-ground);ctx.fillStyle='#d87950';ctx.fillRect(0,ground,w,9*scale);ctx.strokeStyle='#f7d5a0';ctx.lineWidth=2*scale;ctx.beginPath();ctx.moveTo(0,ground+13*scale);ctx.lineTo(w,ground+13*scale);ctx.stroke();
 // Pit and fixed takeoff line; their world coordinates never move with the athlete.
 const line=X(CONFIG.line);ctx.fillStyle='#edcb82';ctx.fillRect(line,ground,Math.max(0,w-line),h-ground);ctx.fillStyle='#fff7d4';ctx.fillRect(line-4*scale,ground-4*scale,5*scale,18*scale);ctx.fillStyle='#df6342';ctx.fillRect(line+1*scale,ground-4*scale,3*scale,18*scale);ctx.fillStyle='#cfaa6a';for(let i=0;i<12;i++){let px=line+(i*47+20)*scale;if(px>w)break;ctx.fillRect(px,ground+(20+i%3*10)*scale,12*scale,1*scale)}
-// Athlete: original animated character, legs alternate with stride.
-const x=X(game.x),y=ground-game.height*scale,s=scale,run=game.mode==='run'&&game.speed>4,air=game.mode==='air',leg=run?Math.sin(game.time*16)*12:0;
-ctx.save();ctx.translate(x,y);ctx.fillStyle='rgba(20,24,34,.3)';ctx.beginPath();ctx.ellipse(0,0,17*s,4*s,0,0,Math.PI*2);ctx.fill();ctx.lineCap='round';ctx.strokeStyle='#263456';ctx.lineWidth=8*s;ctx.beginPath();ctx.moveTo(0,-25*s);ctx.lineTo((air?-10:leg)*s,-4*s);ctx.stroke();ctx.beginPath();ctx.moveTo(0,-25*s);ctx.lineTo((air?12:-leg)*s,-4*s);ctx.stroke();ctx.strokeStyle='#fff3d1';ctx.lineWidth=5*s;ctx.beginPath();ctx.moveTo((air?-10:leg)*s,-3*s);ctx.lineTo((air?-4:leg+7)*s,-3*s);ctx.moveTo((air?12:-leg)*s,-3*s);ctx.lineTo((air?18:-leg+7)*s,-3*s);ctx.stroke();ctx.fillStyle='#f6a83e';ctx.beginPath();ctx.roundRect(-11*s,-55*s,22*s,31*s,7*s);ctx.fill();ctx.fillStyle='#fff4cb';ctx.fillRect(-9*s,-41*s,18*s,3*s);ctx.strokeStyle='#bb774a';ctx.lineWidth=7*s;ctx.beginPath();ctx.moveTo(7*s,-51*s);ctx.lineTo((air?19:14)*s,(air?-66:-32)*s);ctx.stroke();ctx.beginPath();ctx.moveTo(-7*s,-51*s);ctx.lineTo((air?-18:-13)*s,(air?-64:-32)*s);ctx.stroke();ctx.fillStyle='#b7744c';ctx.beginPath();ctx.arc(1*s,-65*s,12*s,0,Math.PI*2);ctx.fill();ctx.fillStyle='#202b4a';ctx.beginPath();ctx.arc(1*s,-68*s,12*s,Math.PI,0);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(7*s,-65*s,3*s,0,7);ctx.fill();ctx.fillStyle='#222';ctx.beginPath();ctx.arc(8*s,-65*s,1.4*s,0,7);ctx.fill();ctx.restore();
+// Character animation remains purely cosmetic: world position and jump physics are unchanged.
+const athleteX=X(game.x); drawAthlete(athleteX,ground,game.height,scale);
+
 if(game.paused){ctx.fillStyle='#0a143cb0';ctx.fillRect(0,0,w,h);ctx.fillStyle='white';ctx.font='900 25px system-ui';ctx.textAlign='center';ctx.fillText('PAUSED',w/2,h/2)} }
+// Layered, articulated athlete. All proportions are in local canvas units; the
+// feet remain anchored to the physics position and the shadow stays on the track.
+function drawAthlete(x,ground,height,scale){
+ const s=scale*1.22, airborne=game.mode==='air', running=game.mode==='run'&&game.speed>4;
+ const cycle=running?Math.sin(game.time*(11+game.speed/35)):0;
+ const bob=running?Math.abs(cycle)*2:0;
+ ctx.save();ctx.fillStyle='rgba(13,24,37,.24)';ctx.beginPath();ctx.ellipse(x,ground,Math.max(7,18*s-height*.08),4*s,0,0,Math.PI*2);ctx.fill();ctx.restore();
+ ctx.save();ctx.translate(x,ground-height*scale-bob*s);ctx.scale(s,s);ctx.lineCap='round';ctx.lineJoin='round';
+ const limb=(color,width,pts)=>{ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)ctx.lineTo(pts[i],pts[i+1]);ctx.stroke()};
+ // Rear leg and arm, shaded to separate them from the foreground limbs.
+ const stride=cycle*12, frontFoot=airborne?14:stride, rearFoot=airborne?-14:-stride;
+ limb('#493b46',8,[-3,-28,-8+rearFoot*.38,-16,rearFoot,-5]);
+ limb('#a76542',7,[-6,-54,-16-cycle*4,-43,-12-cycle*7,-34]);
+ // Sleeveless jersey and shorts with fabric highlights.
+ ctx.fillStyle='#1d3154';ctx.beginPath();ctx.roundRect(-12,-34,24,12,3);ctx.fill();
+ ctx.fillStyle='#142642';ctx.fillRect(-2,-29,3,5);
+ ctx.fillStyle='#db692f';ctx.beginPath();ctx.moveTo(-12,-56);ctx.quadraticCurveTo(-13,-60,-6,-61);ctx.lineTo(7,-61);ctx.quadraticCurveTo(13,-59,13,-53);ctx.lineTo(11,-33);ctx.lineTo(-10,-33);ctx.closePath();ctx.fill();
+ ctx.fillStyle='#ffb74c';ctx.beginPath();ctx.moveTo(-10,-53);ctx.lineTo(-4,-57);ctx.lineTo(5,-57);ctx.lineTo(10,-52);ctx.lineTo(9,-35);ctx.lineTo(-9,-35);ctx.closePath();ctx.fill();
+ ctx.fillStyle='#fff4d7';ctx.fillRect(-9,-43,18,3);ctx.fillStyle='#17434f';ctx.fillRect(-6,-39,12,2);
+ // Front leg: bent knee, sock and a distinct running shoe.
+ limb('#b9754d',8,[3,-26,7+frontFoot*.42,-16,frontFoot,-5]);
+ limb('#fff3dc',6,[frontFoot,-8,frontFoot,-4]);
+ ctx.fillStyle='#172744';ctx.beginPath();ctx.roundRect(frontFoot-5,-6,17,6,3);ctx.fill();ctx.fillStyle='#fff5de';ctx.fillRect(frontFoot-4,-3,15,2);
+ ctx.fillStyle='#192a45';ctx.beginPath();ctx.roundRect(rearFoot-5,-6,15,6,3);ctx.fill();ctx.fillStyle='#e6e9dc';ctx.fillRect(rearFoot-4,-3,13,2);
+ // Front arm pumps with stride; raised in flight.
+ const elbowX=airborne?18:14+cycle*5, elbowY=airborne?-62:-46+cycle*4, handX=airborne?23:10+cycle*8, handY=airborne?-73:-36+cycle*4;
+ limb('#b7744c',7,[8,-54,elbowX,elbowY,handX,handY]);
+ ctx.fillStyle='#d69261';ctx.beginPath();ctx.arc(handX,handY,4,0,Math.PI*2);ctx.fill();
+ // Neck, head and hair; profile is expressive and reads clearly at phone size.
+ ctx.fillStyle='#a96541';ctx.fillRect(-4,-65,10,8);
+ ctx.fillStyle='#c98859';ctx.beginPath();ctx.moveTo(-12,-82);ctx.quadraticCurveTo(-13,-94,0,-95);ctx.quadraticCurveTo(14,-95,14,-81);ctx.lineTo(17,-76);ctx.lineTo(13,-74);ctx.quadraticCurveTo(12,-63,2,-63);ctx.quadraticCurveTo(-12,-64,-12,-75);ctx.closePath();ctx.fill();
+ ctx.fillStyle='#1b2536';ctx.beginPath();ctx.moveTo(-12,-78);ctx.quadraticCurveTo(-17,-95,-4,-98);ctx.quadraticCurveTo(8,-101,14,-89);ctx.lineTo(10,-85);ctx.quadraticCurveTo(5,-88,1,-86);ctx.lineTo(-5,-84);ctx.lineTo(-6,-76);ctx.closePath();ctx.fill();
+ ctx.fillStyle='#a95e3e';ctx.beginPath();ctx.arc(-7,-77,4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff9ec';ctx.beginPath();ctx.ellipse(8,-79,3.3,3.8,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#182332';ctx.beginPath();ctx.arc(9,-78,1.5,0,Math.PI*2);ctx.fill();
+ ctx.strokeStyle='#704a38';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(5,-84);ctx.lineTo(11,-85);ctx.moveTo(6,-70);ctx.quadraticCurveTo(10,-68,13,-71);ctx.stroke();
+ // Headband gives the silhouette a recognisable, colourful sports identity.
+ ctx.strokeStyle='#50d5c1';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-11,-88);ctx.quadraticCurveTo(0,-92,12,-87);ctx.stroke();
+ ctx.restore();
+}
 function hud(){let best=bestScore();$('attempt').textContent=Math.min(game.attempt,CONFIG.attempts)+' / '+CONFIG.attempts;$('best').textContent=best?best.toFixed(2)+' m':'—';$('speedFill').style.width=Math.round(game.speed/CONFIG.maxSpeed*100)+'%';$('phase').textContent=game.paused?'PAUSED':({ready:'READY',run:'SPRINT',air:'FLIGHT',result:'RESULT',complete:'FINISH'})[game.mode];$('aim').hidden=game.mode!=='air';$('aim').textContent=game.boosted?game.boostResult:(game.air>=CONFIG.peakMin&&game.air<=CONFIG.peakMax?'PEAK! TAP BOOST NOW':'IN THE AIR · WAIT FOR THE PEAK');$('jump').classList.toggle('boost',game.mode==='air'&&!game.boosted);$('jump').firstChild.nodeValue=game.mode==='air'?'BOOST':'JUMP';$('instruction').textContent=game.mode==='air'?(game.boosted?game.boostResult:'Tap BOOST near the peak!'):'Alternate LEFT and RIGHT to sprint';let msg=game.paused?'PAUSED':game.mode==='result'?(game.resultLabel+(game.scores[game.scores.length-1]===null?'':'  '+game.scores[game.scores.length-1].toFixed(2)+' m')):game.mode==='air'?(game.boostResult||'FLY!'):game.x>CONFIG.line-65?'JUMP BEFORE THE LINE!':'BUILD YOUR SPEED!';$('message').textContent=msg;}
 function loop(ts){requestAnimationFrame(loop);const dt=last?Math.min((ts-last)/1000,.05):0;last=ts;update(game,dt);draw();hud();if(game.mode==='complete'&&!shownComplete)showComplete();}resize();requestAnimationFrame(loop);
 }
