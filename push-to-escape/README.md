@@ -82,3 +82,9 @@ push-to-escape/
   tests/test_logic.cjs
   README.md
 ```
+
+## Version 2 flood presentation
+
+The original gameplay height, drowning threshold and signal timing are unchanged. A world-space, multi-frequency surface, independent reflection bands, bubbles and foam render over the ground up to the moving brick wall's left face. Impact droplets are bounded by the wall and ground. These are lightweight visual approximations, not a full fluid simulation: the displayed water has a small starting depth and its body is limited to the side of the wall facing the character. Danger drives turbulence, wall splashes, audio intensity and character feedback; the actual failure condition remains the original water-height threshold. A short drowning animation precedes the failure screen.
+
+Performance knobs in `CONFIG`: increase `WATER_WAVE_DETAIL` for fewer surface samples, lower `MAX_PARTICLES` to limit particle load, and adjust `WATER_SPLASH_INTERVAL` for impact frequency. Effects are generated locally; no new assets or network calls are required. Audio still requires a browser user gesture and can be muted.

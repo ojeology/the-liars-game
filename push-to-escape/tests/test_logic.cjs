@@ -12,4 +12,9 @@ test('water rises while waiting and drowns player',()=>{resetGame();run(1);asser
 test('skilled player can win releasing as soon as blinking begins',()=>{resetGame();let elapsed=0;while(g.mode==='playing' && elapsed<30){setPush(g.signal==='green');update(.01);elapsed+=.01;}assert.equal(g.mode,'victory');assert.equal(progress(),1);assert.ok(waterDanger()<1);console.log('  time:',g.time.toFixed(2),'water:',(100*waterDanger()).toFixed(1)+'%');});
 test('pause releases push and freezes game; restart resets',()=>{resetGame();setPush(true);pauseGame();assert.equal(g.pushing,false);const t=g.time;update(1);assert.equal(g.time,t);resumeGame();assert.equal(g.mode,'playing');resetGame();assert.equal(g.wallX,C.WALL_START_X);});
 test('signal state order',()=>{assert.equal(nextSignalState('green'),'blink');assert.equal(nextSignalState('blink'),'red');assert.equal(nextSignalState('red'),'green');});
+test('water rises during red without wall movement',()=>{resetGame();run(C.GREEN_DURATION+C.BLINK_DURATION+.03);assert.equal(g.signal,'red');const w=g.waterHeight,x=g.wallX;run(.5);assert.ok(g.waterHeight>w);assert.equal(g.wallX,x);});
+test('wave is spatial, time varying and stronger at danger',()=>{const {waveOffset}=require('../game.js');assert.notEqual(waveOffset(0,0,0),waveOffset(25,0,0));assert.notEqual(waveOffset(25,0,0),waveOffset(25,1,0));assert.ok(Math.abs(waveOffset(25,1,1))>Math.abs(waveOffset(25,1,0)));});
+test('splash particles remain bounded and never cross wall or ground',()=>{resetGame();run(12);assert.ok(g.particles.length<=C.MAX_PARTICLES);assert.ok(g.particles.filter(p=>p.water).every(p=>p.x<g.wallX && p.y<C.GROUND_Y));});
+test('restart clears flood state',()=>{resetGame();run(5);resetGame();assert.equal(g.waterHeight,0);assert.equal(g.waterClock,0);assert.equal(g.particles.length,0);});
+
 console.log(`${n} tests passed`);

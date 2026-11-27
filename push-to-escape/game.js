@@ -24,6 +24,9 @@ const CONFIG = {
   WATER_RISE_SPEED: 4.2,    // world units/sec at start
   WATER_RISE_ACCEL: 0.08,   // extra units/sec^2 (gets more threatening)
   WATER_DANGER_HEIGHT: 65,  // water height above ground that catches character
+  WATER_WAVE_DETAIL: 8,      // surface sampling step in CSS pixels; raise for low-end devices
+  MAX_PARTICLES: 100,        // shared cap for dust, water droplets and confetti
+  WATER_SPLASH_INTERVAL: 1.25, // base seconds between wall-contact splashes
 
   // World / character
   WORLD_H: 540,
@@ -141,6 +144,14 @@ const AudioEngine = {
   stopScrape() {
     if (this.scrapeNodes) { try { this.scrapeNodes.src.stop(); } catch (e) {} this.scrapeNodes = null; }
   },
+  waterImpact(danger) { this.noise(0.14 + danger * 0.13, 0.012 + danger * 0.025, 650 + danger * 400); },
+  setWaterIntensity(danger) {
+    if (!this.ctx || !this.waterNodes || !this.enabled) return;
+    const { g, f } = this.waterNodes;
+    // Smoothly blend the same looping water bed instead of spawning audio each frame.
+    g.gain.setTargetAtTime(0.012 + danger * 0.045, this.ctx.currentTime, 0.25);
+    f.frequency.setTargetAtTime(260 + danger * 650, this.ctx.currentTime, 0.25);
+  },
   startWater() {
     if (!this.ctx || !this.enabled || this.waterNodes) return;
     try {
@@ -152,7 +163,7 @@ const AudioEngine = {
       const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 400;
       const g = this.ctx.createGain(); g.gain.value = 0.025;
       src.connect(f); f.connect(g); g.connect(this.ctx.destination); src.start();
-      this.waterNodes = { src, g };
+      this.waterNodes = { src, g, f };
     } catch (e) {}
   },
   stopWater() {
@@ -173,6 +184,9 @@ const Game = {
   wallX: CONFIG.WALL_START_X,
   waterHeight: 0,
   waterSpeed: CONFIG.WATER_RISE_SPEED,
+  waterClock: 0,
+  splashTimer: 0.8,
+  impact: 0,
   time: 0,
   walkCycle: 0,
   pushHoldTime: 0,
@@ -194,6 +208,9 @@ function resetGame() {
   Game.wallX = CONFIG.WALL_START_X;
   Game.waterHeight = 0;
   Game.waterSpeed = CONFIG.WATER_RISE_SPEED;
+  Game.waterClock = 0;
+  Game.splashTimer = 0.8;
+  Game.impact = 0;
   Game.time = 0;
   Game.walkCycle = 0;
   Game.pushHoldTime = 0;
@@ -213,7 +230,7 @@ function waterDanger() { return clamp(Game.waterHeight / CONFIG.WATER_DANGER_HEI
 
 // ---------- Particles ----------
 function spawnDust(x, y) {
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 2 && Game.particles.length < CONFIG.MAX_PARTICLES; i++) {
     Game.particles.push({
       x: x + Math.random() * 20 - 10, y: y - Math.random() * 6,
       vx: -30 - Math.random() * 40, vy: -20 - Math.random() * 30,
@@ -222,17 +239,17 @@ function spawnDust(x, y) {
     });
   }
 }
-function spawnSplash(x, y) {
-  for (let i = 0; i < 6; i++) {
+function spawnSplash(x, y, count = 6) {
+  for (let i = 0; i < count && Game.particles.length < CONFIG.MAX_PARTICLES; i++) {
     Game.particles.push({
-      x, y, vx: (Math.random() - 0.5) * 80, vy: -40 - Math.random() * 60,
-      life: 0.5, maxLife: 0.5, size: 2 + Math.random() * 2, color: 'rgba(140,210,255,',
+      x: Math.min(x, Game.wallX - 2), y, vx: -Math.random() * 60, vy: -30 - Math.random() * 70,
+      life: 0.5, maxLife: 0.5, size: 1.5 + Math.random() * 2, color: 'rgba(190,245,255,', water: true,
     });
   }
 }
 function spawnConfetti(x, y) {
   const cols = ['#2ecc71', '#f1c40f', '#3498db', '#e74c3c', '#fff'];
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 40 && Game.particles.length < CONFIG.MAX_PARTICLES; i++) {
     Game.particles.push({
       x, y, vx: (Math.random() - 0.5) * 220, vy: -80 - Math.random() * 160,
       life: 1.2 + Math.random(), maxLife: 2, size: 3 + Math.random() * 3,
@@ -246,6 +263,10 @@ function updateParticles(dt) {
     p.life -= dt;
     if (p.life <= 0) { Game.particles.splice(i, 1); continue; }
     p.x += p.vx * dt; p.y += p.vy * dt;
+    // Droplets bounce off the solid left face; ground absorbs them.
+    if (p.water && (p.x >= Game.wallX || p.y >= CONFIG.GROUND_Y)) {
+      Game.particles.splice(i, 1); continue;
+    }
     p.vy += (p.confetti ? 180 : 120) * dt;
   }
 }
@@ -254,7 +275,7 @@ function updateParticles(dt) {
 function update(dt) {
   if (Game.mode !== 'playing') {
     // Still animate particles / fail-win timers in end states
-    if (Game.mode !== 'paused') updateParticles(dt);
+    if (Game.mode !== 'paused') { Game.waterClock += dt; updateParticles(dt); }
     if (Game.mode === 'gameover' && Game.failTimer > 0) { Game.failTimer -= dt; if (Game.failTimer <= 0) showGameOver(Game.failReason); }
     if (Game.mode === 'victory' && Game.winTimer > 0) { Game.winTimer -= dt; if (Game.winTimer <= 0) showVictory(); }
     return;
@@ -308,9 +329,18 @@ function update(dt) {
   // --- Water rises continuously (even when waiting) ---
   Game.waterSpeed += CONFIG.WATER_RISE_ACCEL * dt;
   Game.waterHeight += Game.waterSpeed * dt;
-  // Splash particles at water surface near character
-  if (Math.random() < dt * 8) {
-    spawnSplash(characterX() - 8, CONFIG.GROUND_Y - Game.waterHeight);
+  // The flood presses against the wall's solid left face. Visual effects are
+  // bounded separately from the authoritative water-height failure rule.
+  Game.waterClock += dt;
+  Game.impact = Math.max(0, Game.impact - dt * 2.2);
+  Game.splashTimer -= dt;
+  AudioEngine.setWaterIntensity(waterDanger());
+  if (Game.splashTimer <= 0 && Game.waterHeight > 2) {
+    const danger = waterDanger();
+    spawnSplash(Game.wallX - 3, CONFIG.GROUND_Y - Game.waterHeight, 2 + Math.floor(danger * 5));
+    Game.impact = 0.45 + danger * 0.55;
+    if (danger > 0.3) AudioEngine.waterImpact(danger);
+    Game.splashTimer = CONFIG.WATER_SPLASH_INTERVAL - danger * 0.7 + Math.random() * 0.35;
   }
   if (Game.waterHeight >= CONFIG.WATER_DANGER_HEIGHT) {
     triggerFail('water');
@@ -324,12 +354,12 @@ function update(dt) {
 function triggerFail(reason) {
   Game.mode = 'gameover';
   Game.failReason = reason;
-  Game.failTimer = 1.0;
+  Game.failTimer = reason === 'water' ? 1.6 : 1.0;
   Game.pushing = false;
   AudioEngine.stopScrape();
   AudioEngine.stopWater();
   AudioEngine.fail();
-  if (reason === 'water') AudioEngine.splash();
+  if (reason === 'water') { spawnSplash(Game.wallX - 3, CONFIG.GROUND_Y - Game.waterHeight, 24); Game.impact = 1; AudioEngine.splash(); }
   // Let the failure animation play before showing the results.
 }
 
@@ -497,12 +527,12 @@ function drawCharacter() {
   let bob = 0, lean = 0, armMode = 'down', legSwing = 0;
   if (isPushing) { bob = Math.sin(Game.walkCycle * 2) * 2 * s; lean = 0.28; armMode = 'push'; legSwing = Math.sin(Game.walkCycle) * 10 * s; }
   else if (isWarning) { bob = Math.sin(Game.time * 12) * 1.5 * s; lean = -0.08; armMode = 'up'; }
-  else if (isDrowning) { bob = (1 - Math.max(0, Game.failTimer)) * 20 * s; lean = 0.15; armMode = 'flail'; }
+  else if (isDrowning) { bob = (1 - Math.max(0, Game.failTimer) / 1.6) * 24 * s; lean = 0.15; armMode = 'flail'; }
   else if (isVictory) { bob = -Math.sin(victoryT * Math.PI) * 105 * s; lean = -0.05; armMode = 'up'; }
   else { bob = Math.sin(Game.time * 2.2) * 1.2 * s; lean = 0.02; armMode = 'down'; }
 
   // Struggling shake when holding long
-  const struggle = isPushing && Game.pushHoldTime > 1.4 ? Math.sin(Game.time * 40) * 1.5 * s : 0;
+  const struggle = isPushing && (Game.pushHoldTime > 1.4 || waterDanger() > 0.72) ? Math.sin(Game.time * 40) * 1.5 * s : 0;
 
   const hipY = gy - 30 * s + bob;
   const shoulderY = gy - 52 * s + bob;
@@ -587,42 +617,74 @@ function drawCharacter() {
   }
 }
 
+// Water surface is a superposition of independent travelling waves in world
+// coordinates. No fluid simulation: water is clipped at ground and wall face.
+function waveOffset(worldX, t, danger) {
+  const amp = 1 + danger * 2.5;
+  return amp * (2.0 * Math.sin(worldX * 0.035 - t * 1.6)
+    + 0.85 * Math.sin(worldX * 0.087 + t * 2.8)
+    + 0.45 * Math.sin(worldX * 0.16 - t * 4.1));
+}
 function drawWater() {
-  const gy = CONFIG.GROUND_Y * scaleF;
-  const wh = Game.waterHeight * scaleF;
-  if (wh <= 0.5) return;
-  const topY = gy - wh;
-  const frontX = worldToScreenX(characterX() + (Game.failReason === 'water' ? 28 : -4));
-  // Body
-  const g = ctx.createLinearGradient(0, topY, 0, cssH);
-  g.addColorStop(0, 'rgba(30,144,255,0.85)');
-  g.addColorStop(1, 'rgba(10,60,140,0.92)');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.moveTo(-20, topY);
-  // Wavy surface to frontX
-  for (let x = -20; x <= frontX; x += 8) {
-    const y = topY + Math.sin(x * 0.08 + Game.time * 4) * 3 * scaleF;
-    ctx.lineTo(x, y);
+  const s = scaleF, gy = CONFIG.GROUND_Y * s;
+  const danger = waterDanger(), t = Game.waterClock;
+  // Small visible base depth establishes the flood even at the start; only
+  // Game.waterHeight governs the actual drowning condition.
+  const baseY = gy - (Game.waterHeight + 5) * s;
+  const wallX = worldToScreenX(Game.wallX);
+  const right = Math.min(cssW, wallX);
+  if (right <= 0 || gy <= baseY) return;
+  const step = CONFIG.WATER_WAVE_DETAIL;
+  const surface = x => Math.min(gy - 1, baseY + waveOffset(x / s + Game.camX, t, danger) * s);
+  ctx.save();
+  // Clip strictly above the ground and left of the wall face.
+  ctx.beginPath(); ctx.rect(0, 0, right, gy); ctx.clip();
+  ctx.beginPath(); ctx.moveTo(0, surface(0));
+  for (let x = step; x < right; x += step) ctx.lineTo(x, surface(x));
+  ctx.lineTo(right, surface(right)); ctx.lineTo(right, gy); ctx.lineTo(0, gy); ctx.closePath();
+  const g = ctx.createLinearGradient(0, baseY - 8 * s, 0, gy + 1);
+  g.addColorStop(0, 'rgba(170,246,255,.9)');
+  g.addColorStop(0.16, 'rgba(60,197,218,.86)');
+  g.addColorStop(0.52, 'rgba(15,113,163,.92)');
+  g.addColorStop(1, 'rgba(5,48,104,.98)');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.save(); ctx.clip();
+  // Long moving reflection bands, suspended bubbles and a second wave layer.
+  ctx.strokeStyle = 'rgba(153,237,247,.22)'; ctx.lineWidth = Math.max(1, 2 * s);
+  for (let i = 0; i < 5; i++) {
+    const y = baseY + (10 + i * 9) * s;
+    ctx.beginPath();
+    for (let x = 0; x <= right; x += step * 2) {
+      const wy = y + Math.sin(x / s * .025 + t * (0.8 + i * .1) + i) * 2 * s;
+      if (x === 0) ctx.moveTo(x, wy); else ctx.lineTo(x, wy);
+    }
+    ctx.stroke();
   }
-  ctx.lineTo(frontX, cssH);
-  ctx.lineTo(-20, cssH);
-  ctx.closePath();
-  ctx.fill();
-  // Foam line
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  for (let x = -20; x <= frontX; x += 8) {
-    const y = topY + Math.sin(x * 0.08 + Game.time * 4) * 3 * scaleF;
-    if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  ctx.fillStyle = 'rgba(220,255,255,.30)';
+  for (let i = 0; i < 14; i++) {
+    const x = ((i * 79 + t * (8 + i % 4) * s) % (right + 25)) - 10;
+    const y = gy - ((i * 13 + t * (5 + i % 3)) % Math.max(1, (gy - baseY) / s)) * s;
+    ctx.beginPath(); ctx.arc(x, y, (i % 3 === 0 ? 1.5 : .8) * s, 0, Math.PI * 2); ctx.fill();
   }
-  ctx.stroke();
-  // Danger tint when close
-  if (waterDanger() > 0.7) {
-    ctx.fillStyle = `rgba(231,76,60,${0.10 + 0.08 * Math.sin(Game.time * 8)})`;
-    ctx.fillRect(0, topY, frontX, cssH - topY);
+  ctx.restore();
+  // Crest line and broken foam strokes, stronger at critical water levels.
+  ctx.strokeStyle = 'rgba(211,255,255,.85)'; ctx.lineWidth = Math.max(1, (1.3 + danger) * s);
+  ctx.beginPath(); ctx.moveTo(0, surface(0));
+  for (let x = step; x < right; x += step) ctx.lineTo(x, surface(x));
+  ctx.lineTo(right, surface(right)); ctx.stroke();
+  ctx.strokeStyle = 'rgba(245,255,255,.68)'; ctx.lineWidth = Math.max(1, 2 * s);
+  for (let i = 0; i < 7; i++) {
+    let x = ((i * 73 + t * (13 + danger * 20) * s) % (right + 40)) - 20;
+    let len = (9 + danger * 14 + (i % 3) * 4) * s;
+    ctx.beginPath(); ctx.moveTo(x, surface(x) + 3 * s); ctx.lineTo(x + len, surface(x + len) + 3 * s); ctx.stroke();
   }
+  // Water piling against the masonry face, never inside its geometry.
+  if (wallX <= cssW && wallX > 0) {
+    const y = surface(right);
+    ctx.fillStyle = `rgba(223,255,255,${0.38 + Game.impact * 0.42})`;
+    ctx.beginPath(); ctx.ellipse(right - 3 * s, y + 2 * s, 4 * s, (4 + Game.impact * 9) * s, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawParticles() {
@@ -651,7 +713,7 @@ function render() {
 
   // Screen shake
   let sx = 0, sy = 0;
-  if (Game.shakeTime > 0) {
+  if (Game.shakeTime > 0 || (waterDanger() > 0.8 && Game.impact > 0.5)) {
     sx = (Math.random() - 0.5) * CONFIG.SHAKE_MAG;
     sy = (Math.random() - 0.5) * CONFIG.SHAKE_MAG * 0.6;
   }
@@ -661,8 +723,8 @@ function render() {
   drawGround();
   drawEscape();
   drawWall();
-  drawCharacter();
   drawWater();
+  drawCharacter();
   drawParticles();
 
   // Vignette
@@ -911,5 +973,5 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
 
 // Export for Node tests (ignored in browser)
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { CONFIG, Game, resetGame, update, setPush, pauseGame, resumeGame, progress, waterDanger, nextSignalState, signalDuration, canPushInState, isPushForbidden, waterHeightAt, pushTimeNeeded, perfectPlayTime, clamp, lerp };
+  module.exports = { CONFIG, Game, waveOffset, resetGame, update, setPush, pauseGame, resumeGame, progress, waterDanger, nextSignalState, signalDuration, canPushInState, isPushForbidden, waterHeightAt, pushTimeNeeded, perfectPlayTime, clamp, lerp };
 }
